@@ -14,3 +14,5 @@
 .trace-state{color:var(--lime)}
 @media(max-width:760px){.brand>span{font-size:15px;max-width:160px}.brand small{font-size:8px}.site-header nav{gap:12px}.site-header nav a[href="#engine"],.site-header nav a[href="#setup"]{display:none}}
 @media(max-width:400px){.brand{gap:8px;min-width:0}.brand>span{max-width:145px;font-size:14px}.brand small{display:none}.nav-github{padding:8px 10px}.site-header nav a{white-space:nowrap}}
+
+.brand img,.closing>img{object-fit:cover;border-radius:9px;box-shadow:0 0 0 1px #315638}
