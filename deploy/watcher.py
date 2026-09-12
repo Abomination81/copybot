@@ -373,12 +373,12 @@ def check_guardian(alert):
             _guardian_reported[0] = True
             alert('WARN', 'GUARDIAN-DOWN', detail)
             if notify.configured():
-                notify.send('copybot: THE GUARDIAN IS NOT RUNNING', '%s\n\nThe bot is still trading and still mirroring exits — this is not a halt. What has stopped is the supervisor that reconciles the ledger against the chain and stops the pool when something is wrong.\n\n  systemctl status copybot-guardian.timer\n  systemctl start copybot-guardian.timer\n\n%s\n' % (detail, notify.local_stamp()), log=lambda m: alert('WARN', 'GUARDIAN-DOWN', m))
+                notify.send('Abomination81 Copybot: THE GUARDIAN IS NOT RUNNING', '%s\n\nThe bot is still trading and still mirroring exits — this is not a halt. What has stopped is the supervisor that reconciles the ledger against the chain and stops the pool when something is wrong.\n\n  systemctl status copybot-guardian.timer\n  systemctl start copybot-guardian.timer\n\n%s\n' % (detail, notify.local_stamp()), log=lambda m: alert('WARN', 'GUARDIAN-DOWN', m))
     elif status == 'ALIVE' and _guardian_reported[0]:
         _guardian_reported[0] = False
         alert('INFO', 'GUARDIAN-BACK', 'the guardian is completing runs again (%s)' % detail)
         if notify.configured():
-            notify.send('copybot: the guardian is running again', '%s\n%s\n' % (detail, notify.local_stamp()))
+            notify.send('Abomination81 Copybot: the guardian is running again', '%s\n%s\n' % (detail, notify.local_stamp()))
 
 def _held_shares(token):
     try:

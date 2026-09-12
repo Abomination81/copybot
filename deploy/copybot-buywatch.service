@@ -1,5 +1,5 @@
 [Unit]
-Description=Copybot buy-side copy audit (chain vs our decisions)
+Description=Abomination81 Copybot — buy-side copy audit (chain vs our decisions)
 After=network-online.target
 Wants=network-online.target
 

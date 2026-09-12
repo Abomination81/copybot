@@ -1,38 +1,38 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Copybot / Pool</title>
-<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Crect%20width%3D%2732%27%20height%3D%2732%27%20rx%3D%277%27%20fill%3D%27%230b0b0e%27%2F%3E%3Crect%20x%3D%275%27%20y%3D%277%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%234c82fb%27%20opacity%3D%27.42%27%2F%3E%3Crect%20x%3D%2711%27%20y%3D%2713%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%234c82fb%27%20stroke%3D%27%230b0b0e%27%20stroke-width%3D%272%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%274.5%27%20fill%3D%27%230b0b0e%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%273%27%20fill%3D%27%235a5a65%27%2F%3E%3C%2Fsvg%3E">
-<meta name="theme-color" content="#08080a">
-<meta name="apple-mobile-web-app-title" content="Copybot">
+<title>Abomination81 Copybot / Dashboard</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Crect%20width%3D%2732%27%20height%3D%2732%27%20rx%3D%277%27%20fill%3D%27%2308110a%27%2F%3E%3Crect%20x%3D%275%27%20y%3D%277%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%2339ff14%27%20opacity%3D%27.42%27%2F%3E%3Crect%20x%3D%2711%27%20y%3D%2713%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%2339ff14%27%20stroke%3D%27%2308110a%27%20stroke-width%3D%272%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%274.5%27%20fill%3D%27%2308110a%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%273%27%20fill%3D%27%23748b79%27%2F%3E%3C%2Fsvg%3E">
+<meta name="theme-color" content="#020704">
+<meta name="apple-mobile-web-app-title" content="Abomination81 Copybot">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#08080a; --panel:#0b0b0e; --panel2:#0e0e12; --raised:#101014;
-  --line:#17171c; --border:#1c1c22;
-  --ink:#f2f2f5; --dim:#8b8b96; --subtle:#7c7c88; --faint:#5a5a65;
-  --indigo:oklch(0.68 0.14 265); --indigo-l:oklch(0.72 0.14 265);
-  --mint:oklch(0.82 0.13 165); --rose:oklch(0.72 0.15 18); --amber:#f2c14e;
+  --bg:#020704; --panel:#08110a; --panel2:#0c180e; --raised:#122015;
+  --line:#1b3020; --border:#28452e;
+  --ink:#f4f7f4; --dim:#a1b3a5; --subtle:#8da593; --faint:#748b79;
+  --indigo:#39ff14; --indigo-l:#c3ff3e;
+  --mint:#39ff14; --rose:oklch(0.72 0.15 18); --amber:#f2c14e;
   --sans:'Instrument Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);display:flex;justify-content:center;padding:0;
+body{margin:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:0;
   font-family:var(--sans);font-variant-numeric:tabular-nums;color:var(--ink)}
 /* ⚠️ THIS WAS `width:1440px;flex:none`, which is what made the page static: below
    1440 it clipped, above it, it letterboxed against a grey surround. Fluid with a cap
    instead — the cap exists because line lengths past ~1800px stop being readable, not
    because the layout cannot stretch. */
-#app{width:100%;max-width:1800px;min-height:100vh;background:var(--bg);
+#app{width:100%;max-width:1800px;min-height:calc(100vh - 76px);background:var(--bg);
   display:flex;flex-direction:column;font-size:13px}
 button{font-family:var(--sans)}
 .seg{display:flex;gap:2px;padding:2px;background:var(--raised);border:1px solid var(--border);border-radius:8px}
 .seg>span{cursor:pointer;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:500;color:var(--dim)}
-.seg>span.on{background:var(--raised);color:var(--ink);box-shadow:inset 0 0 0 1px #24242c}
+.seg>span.on{background:var(--raised);color:var(--ink);box-shadow:inset 0 0 0 1px #315638}
 .ed{transition:opacity .12s,border-color .12s}
 .locked .ed{opacity:.55;cursor:not-allowed}
 .locked .knob{opacity:.45;cursor:not-allowed}
 .scroll{overflow-y:auto;min-height:0}
-.scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:#20202a;border-radius:4px}
+.scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:#28452e;border-radius:4px}
 a{color:var(--indigo-l);text-decoration:none}
 .spinner{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);
   border-top-color:var(--indigo);animation:spin .8s linear infinite}
@@ -137,9 +137,9 @@ a{color:var(--indigo-l);text-decoration:none}
 .tick-up{animation:tkUp .9s}
 .tick-dn{animation:tkDn .9s}
 .tick-new{animation:tkNew 1.4s}
-@keyframes tkUp{0%{background:oklch(0.82 0.13 165 / .30)}100%{background:transparent}}
+@keyframes tkUp{0%{background:rgba(57,255,20,.20)}100%{background:transparent}}
 @keyframes tkDn{0%{background:oklch(0.72 0.15 18 / .30)}100%{background:transparent}}
-@keyframes tkNew{0%{background:oklch(0.68 0.14 265 / .34)}100%{background:transparent}}
+@keyframes tkNew{0%{background:rgba(195,255,62,.22)}100%{background:transparent}}
 #toast{position:fixed;right:18px;bottom:18px;max-width:440px;background:var(--panel2);
   border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:11.5px;
   display:none;z-index:80;box-shadow:0 8px 30px rgba(0,0,0,.5)}
@@ -161,7 +161,7 @@ a{color:var(--indigo-l);text-decoration:none}
 .modal{background:var(--panel2);border:1px solid var(--border);border-radius:12px;max-width:440px;width:100%;padding:22px}
 .modal h3{margin:0 0 6px;font-size:16px}
 .warnbox{border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px;line-height:1.5}
-input[type=text],input[type=number]{background:#0e0e12;border:1px solid var(--border);color:var(--ink);
+input[type=text],input[type=number]{background:#0c180e;border:1px solid var(--border);color:var(--ink);
   border-radius:7px;padding:7px 9px;font-family:var(--mono);font-size:12px;width:100%}
 @media (prefers-reduced-motion:reduce){
   .ticker-track{animation:none}
@@ -183,7 +183,22 @@ input[type=text],input[type=number]{background:#0e0e12;border:1px solid var(--bo
 .blindbar p{margin:0;font-size:12.5px;line-height:1.5;color:#ffb4b4}
 .blindbar .age{font-family:var(--mono);font-size:12px;color:#ff8c8c;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.blindbar .dot{animation:none}}
-</style></head><body><div id="app"></div><div id="toast"></div><div id="modal"></div>
+
+/* Persistent branding stays visible during connecting, offline and live states. */
+:root{color-scheme:dark;--lime:#c3ff3e}
+.brandbar{width:100%;max-width:1800px;min-height:76px;display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #315638;background:linear-gradient(110deg,#08110a,#020704);box-shadow:0 1px 24px #39ff1408}
+.brandmark{width:36px;height:36px;flex:none;color:var(--lime)}
+.brandname{font-size:18px;line-height:1.25;font-weight:700;letter-spacing:-.5px;color:var(--ink)}
+.brandname small{display:block;margin-top:4px;font:9px var(--mono);letter-spacing:1.7px;color:var(--subtle)}
+.brandprofile{margin-left:auto;padding:8px 12px;border:1px solid #315638;border-radius:7px;color:var(--lime);font-size:12px;white-space:nowrap}
+.brandprofile:hover{background:#172b1c;color:#fff}
+a:focus-visible,button:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
+@media(max-width:600px){.brandbar{padding:13px 14px;gap:10px}.brandname{font-size:15px}.brandname small{font-size:8px;letter-spacing:1px}.brandprofile{font-size:10px;padding:7px}.brandmark{width:28px;height:28px}}
+</style></head><body><header class="brandbar" aria-label="Abomination81 Copybot">
+<svg class="brandmark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#08110a" stroke="#315638"/><path d="M23 9h-8a5 5 0 0 0-5 5v9m7 8h8a5 5 0 0 0 5-5v-9M15 25l11-11m-8 0h8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<div class="brandname">Abomination81 Copybot<small>INDEPENDENT EXECUTION / OPERATOR CONSOLE</small></div>
+<a class="brandprofile" href="https://x.com/Abomination81" target="_blank" rel="noopener noreferrer" aria-label="Follow Abomination81 on X">X @Abomination81 ↗</a>
+</header><div id="app"></div><div id="toast"></div><div id="modal"></div>
 <script>
 
 const READ_ONLY = false;
@@ -255,10 +270,10 @@ function driftByLane(pool) {
 const FAV = (dot, bright) =>
   "data:image/svg+xml," + encodeURIComponent(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
-    "<rect width='32' height='32' rx='7' fill='#0b0b0e'/>" +
-    "<rect x='5' y='7' width='13' height='13' rx='3.5' fill='#4c82fb' opacity='" + (bright ? "1" : ".42") + "'/>" +
-    "<rect x='11' y='13' width='13' height='13' rx='3.5' fill='#4c82fb' stroke='#0b0b0e' stroke-width='2'/>" +
-    "<circle cx='24.5' cy='7.5' r='4.5' fill='#0b0b0e'/>" +
+    "<rect width='32' height='32' rx='7' fill='#08110a'/>" +
+    "<rect x='5' y='7' width='13' height='13' rx='3.5' fill='#39ff14' opacity='" + (bright ? "1" : ".42") + "'/>" +
+    "<rect x='11' y='13' width='13' height='13' rx='3.5' fill='#39ff14' stroke='#08110a' stroke-width='2'/>" +
+    "<circle cx='24.5' cy='7.5' r='4.5' fill='#08110a'/>" +
     "<circle cx='24.5' cy='7.5' r='3' fill='" + (bright ? "#ffffff" : dot) + "'/></svg>");
 
 const STALE_HALT_SECS = 15 * 60;
@@ -294,7 +309,7 @@ function haltChip(l) {
   }, label);
 }
 
-const HEALTH_DOT = { stopped: "#ff9d95", warn: "#f2c14e", live: "#5fdd9d", idle: "#5a5a65" };
+const HEALTH_DOT = { stopped: "#ff9d95", warn: "#f2c14e", live: "#39ff14", idle: "#748b79" };
 
 function healthState() {
   if (!S.pool) return "idle";
@@ -533,15 +548,15 @@ function chartSVG(pts, unreal) {
   const X = i => i / Math.max(n - 1, 1) * xw, Y = v => H - (v - lo) / rng * H;
   const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(" ");
   const zero = (lo < 0 && hi > 0)
-    ? `<line x1="0" y1="${Y(0).toFixed(1)}" x2="${W}" y2="${Y(0).toFixed(1)}" stroke="#2a2a33" stroke-width="1" stroke-dasharray="3 3"/>` : "";
+    ? `<line x1="0" y1="${Y(0).toFixed(1)}" x2="${W}" y2="${Y(0).toFixed(1)}" stroke="#28452e" stroke-width="1" stroke-dasharray="3 3"/>` : "";
   const step = unreal
     ? `<line x1="${X(n-1).toFixed(1)}" y1="${Y(last).toFixed(1)}" x2="${W}" y2="${Y(total).toFixed(1)}"
         stroke="${unreal >= 0 ? "var(--mint)" : "var(--rose)"}" stroke-width="1.6" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
        <circle cx="${W}" cy="${Y(total).toFixed(1)}" r="2.6" fill="${unreal >= 0 ? "var(--mint)" : "var(--rose)"}"/>` : "";
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
-    ${[26,52,78].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#16161b" stroke-width="1"/>`).join("")}
+    ${[26,52,78].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#172b1c" stroke-width="1"/>`).join("")}
     ${zero}
-    <polygon points="0,${H} ${line} ${X(n-1).toFixed(1)},${H}" fill="oklch(0.68 0.14 265 / 0.13)"/>
+    <polygon points="0,${H} ${line} ${X(n-1).toFixed(1)},${H}" fill="rgba(195,255,62,.10)"/>
     <polyline points="${line}" fill="none" stroke="var(--indigo-l)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
     ${step}</svg>`;
 }
@@ -576,7 +591,7 @@ function segbar(id, opts, cur, on) {
 }
 const grid = (cols, cells, head) => el("div", {
   style: `display:grid;grid-template-columns:${cols};align-items:center;` +
-         (head ? "" : "border-bottom:1px solid #121216")
+         (head ? "" : "border-bottom:1px solid #132218")
 }, cells);
 
 const LS_KEY = "copybot.layout.v1";
@@ -761,7 +776,7 @@ function laneRow(l) {
     el("div", { style: "flex:1;min-width:0" }, [
       el("div", { style: "display:flex;align-items:center;gap:7px" }, [
         el("span", { style: "font-family:var(--mono);font-size:12px;font-weight:500" }, l.name),
-        el("span", { style: "font-size:10px;font-weight:500;padding:1px 6px;border-radius:5px;background:#17171d;color:var(--dim)" }, pct(l.pct)),
+        el("span", { style: "font-size:10px;font-weight:500;padding:1px 6px;border-radius:5px;background:#15261a;color:var(--dim)" }, pct(l.pct)),
         l.halted ? haltChip(l) : "",
       ]),
       el("div", { style: "font-size:12px;color:var(--subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" },
@@ -846,7 +861,7 @@ function laneDetail(l) {
       el("div", { style: "padding:9px 0 2px" }, [
         el("div", { style: "font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px" }, "Stop this wallet"),
         el("div", { style: "display:flex;gap:6px" }, [
-          stop("graceful", "Graceful", "background:var(--raised);border:1px solid var(--border);color:#c8c8d2"),
+          stop("graceful", "Graceful", "background:var(--raised);border:1px solid var(--border);color:#c5d8ca"),
           stop("hybrid", "Hybrid", "background:rgba(242,193,78,.10);border:1px solid rgba(242,193,78,.25);color:var(--amber)"),
           stop("panic", "Panic", "background:rgba(203,49,49,.12);border:1px solid #2c1d20;color:var(--rose)"),
         ]),
@@ -895,7 +910,7 @@ function tableBlock() {
       const urCell = flashVal(td(sgn(u), "right", col(u)), `ur:${q.token}`, u);
       return flashNew(grid(cols, [
         ...(showLane ? [td(q.lane, "left", "var(--dim)")] : []),
-        td(q.title || "—", "left", "#dcdce4"), td(q.outcome || "", "left", "var(--dim)"),
+        td(q.title || "—", "left", "#e3eee5"), td(q.outcome || "", "left", "var(--dim)"),
         td(when(q.entry_ts).split(",")[0], "left", "var(--faint)"),
         td(q.our_price?.toFixed(3) ?? "—", "right"),
         td(q.leader_price?.toFixed(3) ?? "—", "right", "var(--dim)"),
@@ -919,7 +934,7 @@ function tableBlock() {
 
       const dc = (t.drag_c === null || t.drag_c === undefined) ? null : Number(t.drag_c);
       return flashNew(grid(cols, [
-        td(titleOf(t.token), "left", "#dcdce4"),
+        td(titleOf(t.token), "left", "#e3eee5"),
         td(t.side === 0 ? "BUY" : "SELL", "left", t.side === 0 ? "var(--indigo-l)" : "var(--mint)"),
 
         td(t.exec === "maker" ? "GTC" : "FAK", "left",
@@ -950,7 +965,7 @@ function tableBlock() {
 
       l ? el("button", {
         style: "font-size:10.5px;font-weight:600;padding:2px 6px 2px 8px;border-radius:6px;cursor:pointer;" +
-               "background:rgba(76,130,251,.14);border:1px solid rgba(76,130,251,.3);color:var(--indigo-l);" +
+               "background:rgba(195,255,62,.14);border:1px solid rgba(195,255,62,.3);color:var(--indigo-l);" +
                "display:inline-flex;align-items:center;gap:6px",
         title: `showing ${l.name} only — click to show every wallet`,
         onclick: () => setFocus(null),
@@ -1175,7 +1190,7 @@ function settingsBlock(l) {
       class: "ed",
       contenteditable: S.locked ? "false" : "true",
       style: "font-family:var(--mono);font-size:12px;padding:3px 8px;border-radius:6px;" +
-             `background:#0e0e12;border:1px solid ${S.locked ? "var(--border)" : "#3a3a46"};` +
+             `background:#0c180e;border:1px solid ${S.locked ? "var(--border)" : "#486b50"};` +
              "color:var(--ink);outline:none;min-width:64px;display:inline-block;text-align:right",
       onblur: e => {
         const v = parse(e.target.textContent);
@@ -1195,12 +1210,12 @@ function settingsBlock(l) {
       style: "width:38px;height:21px;border-radius:11px;padding:0;cursor:" +
         (S.locked ? "default" : "pointer") + ";border:1px solid " +
         (on ? "var(--mint)" : "var(--border)") + ";background:" +
-        (on ? "rgba(61,180,104,.22)" : "#0e0e12") + ";position:relative;display:block",
+        (on ? "rgba(57,255,20,.22)" : "#0c180e") + ";position:relative;display:block",
       onclick: () => { if (S.locked) return;
         S.edits[l.name] = { ...(S.edits[l.name] || {}), [key]: !on }; render(); },
     }, el("span", { style: "position:absolute;top:2px;left:" + (on ? "19px" : "2px") +
         ";width:15px;height:15px;border-radius:50%;background:" +
-        (on ? "var(--mint)" : "#4a4a56") + ";transition:left .12s" }));
+        (on ? "var(--mint)" : "#486b50") + ";transition:left .12s" }));
   };
 
   const row = (label, node, sub) => el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:6px 0;gap:10px" }, [
@@ -1220,7 +1235,7 @@ function settingsBlock(l) {
         edit("max_buy_price", hi, v => v.toFixed(2), t => { const v = parseFloat(t); return v >= 0 && v <= 1 ? v : null; }),
       ]),
     ]),
-    el("div", { style: "position:relative;height:6px;border-radius:3px;background:#17171d;overflow:hidden" },
+    el("div", { style: "position:relative;height:6px;border-radius:3px;background:#15261a;overflow:hidden" },
       el("div", { style: `position:absolute;left:${cur("min_buy_price", lo) * 100}%;width:${(cur("max_buy_price", hi) - cur("min_buy_price", lo)) * 100}%;top:0;height:6px;background:var(--indigo)` })),
     el("div", { style: "display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:4px" },
       [el("span", {}, "0c"), el("span", {}, "50c"), el("span", {}, "100c")]),
@@ -1236,14 +1251,14 @@ function settingsBlock(l) {
 
   const unlock = unlockBuckets(p, mv);
 
-  return el("div", { style: "border:1px solid var(--border);border-radius:9px;background:#0c0c10;margin-top:8px;overflow:hidden" }, [
+  return el("div", { style: "border:1px solid var(--border);border-radius:9px;background:#08110a;margin-top:8px;overflow:hidden" }, [
     el("div", { style: "display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)" }, [
       el("span", { style: "font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)" }, "Settings"),
       el("span", { style: `font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;` +
-        (S.locked ? "background:#17171d;color:var(--dim)" : "background:rgba(242,193,78,.14);color:var(--amber)") },
+        (S.locked ? "background:#15261a;color:var(--dim)" : "background:rgba(242,193,78,.14);color:var(--amber)") },
         S.locked ? "LOCKED" : "EDITING"),
       el("div", { style: "flex:1" }),
-      el("button", { style: "font-size:11px;font-weight:500;padding:3px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer",
+      el("button", { style: "font-size:11px;font-weight:500;padding:3px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c5d8ca;cursor:pointer",
         onclick: e => { e.stopPropagation(); S.locked = !S.locked; render(); } }, S.locked ? "Unlock" : "Lock"),
     ]),
     el("div", {}, [
@@ -1252,7 +1267,7 @@ function settingsBlock(l) {
         row("Virtual budget", edit("seed_usd", l.seed_usd, v => usd(v, 0), t => { const v = parseFloat(String(t).replace(/[$,]/g, "")); return v > 0 ? v : null; })),
         el("div", { style: "display:flex;justify-content:space-between;font-size:11.5px;color:var(--subtle);margin:8px 0 6px" },
           [el("span", {}, "Deployed"), el("span", { style: "color:var(--ink)" }, `${usd(l.open_usd)} · ${dep.toFixed(1)}%`)]),
-        el("div", { style: "height:6px;border-radius:3px;background:#17171d;overflow:hidden" },
+        el("div", { style: "height:6px;border-radius:3px;background:#15261a;overflow:hidden" },
           el("div", { style: `height:6px;background:var(--mint);width:${Math.min(dep, 100).toFixed(1)}%` })),
       ]),
       el("div", { style: "padding:8px 16px 12px;border-bottom:1px solid var(--line)" }, [
@@ -1300,8 +1315,8 @@ function unlockBuckets(p, marked) {
     ["Overdue",        "var(--amber)"],
     ["\u2264 7 days",     "var(--indigo)"],
     ["\u2264 30 days",    "var(--indigo)"],
-    ["Later",          "#2f2f3a"],
-    ["No date",        "#2f2f3a"],
+    ["Later",          "#29492e"],
+    ["No date",        "#29492e"],
   ];
   const acc = {}; B.forEach(([k]) => acc[k] = [0, 0]);
 
@@ -1325,7 +1340,7 @@ function unlockBuckets(p, marked) {
       el("span", { style: `font-size:11.5px;color:${k === "Redeemable now" ? "var(--mint)" : k === "Overdue" ? "var(--amber)" : "var(--subtle)"}` }, k),
       el("span", { style: "font-family:var(--mono);font-size:12px" }, `${usd(acc[k][0])} \u00b7 ${acc[k][1]}`),
     ]),
-    el("div", { style: "height:4px;border-radius:2px;background:#17171d;overflow:hidden" },
+    el("div", { style: "height:4px;border-radius:2px;background:#15261a;overflow:hidden" },
       el("div", { style: `height:4px;background:${c};width:${(acc[k][0] / denom * 100).toFixed(1)}%` })),
   ]));
   if (!rows.length) return [el("div", { style: "font-size:11px;color:var(--faint)" }, "No open positions.")];
@@ -1359,7 +1374,7 @@ function renderRailFooter() {
       `${keys.length} unsaved change${keys.length > 1 ? "s" : ""} · ${keys.join(", ")}`),
     el("div", { style: "display:flex;gap:6px" }, [
       el("button", {
-        style: "flex:1;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:var(--indigo);border:1px solid var(--indigo-l);color:#fff;cursor:pointer",
+        style: "flex:1;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:var(--indigo);border:1px solid var(--indigo-l);color:#041402;cursor:pointer",
 
         onclick: () => commit({ method: "POST", url: "/api/wallets", body: { name: l.name, ...pend } })
           .then(res => {
@@ -1370,7 +1385,7 @@ function renderRailFooter() {
           })
       }, READ_ONLY ? "Save (read-only)" : "Save"),
       el("button", {
-        style: "font-size:11px;padding:6px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer",
+        style: "font-size:11px;padding:6px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c5d8ca;cursor:pointer",
         onclick: () => { S.edits[l.name] = {}; render(); }
       }, "Discard"),
     ]),
@@ -1401,7 +1416,7 @@ function openGate(laneName, mode) {
   confirmBtn.textContent = `Confirm in ${left}s`;
   confirmBtn.style.background = c.soft ? "var(--indigo)" : "rgba(203,49,49,.18)";
   confirmBtn.style.borderColor = c.soft ? "var(--indigo-l)" : "#2c1d20";
-  confirmBtn.style.color = c.soft ? "#fff" : "#ffd9d9";
+  confirmBtn.style.color = c.soft ? "#041402" : "#ffd9d9";
   tick = setInterval(() => {
     if (--left > 0) { confirmBtn.textContent = `Confirm in ${left}s`; return; }
     clearInterval(tick);
@@ -1428,7 +1443,7 @@ function openGate(laneName, mode) {
         confirmBtn.onclick = close;
         return;
       }
-      stage.append(el("div", { class: "warnbox", style: "background:rgba(61,180,104,.10);color:#c7e8bd;margin:0" },
+      stage.append(el("div", { class: "warnbox", style: "background:rgba(57,255,20,.10);color:#c7e8bd;margin:0" },
         res.readOnly ? "Read-only — the runtime was not asked to do anything." : "Queued. The runtime is gating and executing it."));
       confirmBtn.textContent = "Done"; confirmBtn.disabled = true;
       setTimeout(close, 1800);
@@ -1440,14 +1455,14 @@ function openGate(laneName, mode) {
     el("div", { class: "modal" }, [
       el("h3", {}, `${mode[0].toUpperCase() + mode.slice(1)} exit — ${laneName}`),
       el("p", { style: "color:var(--subtle);margin:0 0 16px;font-size:12.5px" }, `This affects only the ${laneName} wallet.`),
-      el("div", { class: "warnbox", style: c.soft ? "background:rgba(61,180,104,.10);color:#c7e8bd" : "background:rgba(203,49,49,.12);color:#ffb4ae" }, c.text),
+      el("div", { class: "warnbox", style: c.soft ? "background:rgba(57,255,20,.10);color:#c7e8bd" : "background:rgba(203,49,49,.12);color:#ffb4ae" }, c.text),
       isHybrid ? el("label", { style: "display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;font-size:12px" },
         [ack, el("span", {}, "I understand selling winners early forfeits the upside they would have grown into.")]) : "",
       stage,
       READ_ONLY ? el("div", { style: "font-size:10.5px;color:var(--faint);margin:10px 0 0" },
         "Read-only build — the gate runs in full, but nothing is sent.") : "",
       el("div", { style: "display:flex;gap:10px;justify-content:flex-end;margin-top:16px" }, [
-        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer", onclick: close }, "Cancel"),
+        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c5d8ca;cursor:pointer", onclick: close }, "Cancel"),
         confirmBtn,
       ]),
     ]),
@@ -1487,7 +1502,7 @@ function armBlock(l) {
         (latched ? "not-allowed" : "pointer") + ";border:1px solid " +
         (on ? s.c : "var(--border)") + ";background:" +
         (on ? `color-mix(in oklab, ${s.c} 16%, transparent)` : "var(--raised)") +
-        ";color:" + (on ? s.c : "#9a9aa6") + (latched && !on ? ";opacity:.4" : ""),
+        ";color:" + (on ? s.c : "#a1b3a5") + (latched && !on ? ";opacity:.4" : ""),
       onclick: () => s.id === sel ? null : setArm(l.name, s.id),
     }, s.label);
   });
@@ -1548,7 +1563,7 @@ function setArm(lane, state) {
       READ_ONLY ? el("div", { style: "font-size:10.5px;color:var(--faint);margin:10px 0 0" },
         "Read-only build — the gate runs in full, but nothing is sent.") : "",
       el("div", { style: "display:flex;gap:10px;justify-content:flex-end;margin-top:16px" }, [
-        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer", onclick: close }, "Cancel"),
+        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c5d8ca;cursor:pointer", onclick: close }, "Cancel"),
         go,
       ]),
     ]),
@@ -1601,7 +1616,7 @@ function laneHealth(l, counts) {
   const stops = counts?.stops || 0, warns = counts?.warns || 0;
   const drift = (S.drift || {})[l.name];
 
-  return el("div", { style: "padding:7px 0;border-bottom:1px solid #131318" }, [
+  return el("div", { style: "padding:7px 0;border-bottom:1px solid #132218" }, [
     el("div", { style: "display:flex;align-items:center;gap:8px" }, [
       el("span", { style: `width:6px;height:6px;border-radius:50%;flex:none;background:${C[0]}` }),
       el("span", { style: "font-family:var(--mono);font-size:12px;flex:1" }, l.name),
@@ -1631,7 +1646,7 @@ function poolVerdict(lanes, errs) {
                                         : S.connDown ? "UNREACHABLE" : "RECOVERED"]
     : st === "live" ? ["var(--mint)", "HEALTHY"]
     : ["var(--faint)", "IDLE"];
-  return el("span", { style: `font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;color:${c};background:${c === "var(--faint)" ? "#17171d" : `color-mix(in oklab, ${c} 16%, transparent)`}` }, t);
+  return el("span", { style: `font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;color:${c};background:${c === "var(--faint)" ? "#15261a" : `color-mix(in oklab, ${c} 16%, transparent)`}` }, t);
 }
 
 function errorFeed(errs) {
@@ -1653,7 +1668,7 @@ function errorFeed(errs) {
       ]),
 
 
-      el("div", { style: "font-size:11.5px;color:#c8c8d2;line-height:1.45" }, e.human || e.detail),
+      el("div", { style: "font-size:11.5px;color:#c5d8ca;line-height:1.45" }, e.human || e.detail),
       e.human && e.detail && e.human !== e.detail
         ? el("div", { style: "font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:4px;word-break:break-all" }, e.detail)
         : "",
@@ -1700,7 +1715,7 @@ function connBanner() {
   if (auth) {
     kids.push(el("button", {
       style: "margin-left:auto;font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:6px;" +
-             "cursor:pointer;background:var(--amber);color:#17171d;border:none",
+             "cursor:pointer;background:var(--amber);color:#15261a;border:none",
       onclick: () => location.reload(),
     }, "Sign in again"));
   }
@@ -1800,9 +1815,9 @@ function render() {
             l ? l.name : "All wallets"),
           l
             ? el("span", { style: `font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;` +
-                (l.armed ? "color:var(--mint);background:oklch(0.82 0.13 165 / 0.14)" : "color:var(--faint);background:#17171d") },
+                (l.armed ? "color:var(--mint);background:rgba(57,255,20,.12)" : "color:var(--faint);background:#15261a") },
                 l.armed ? "ARMED" : "IDLE")
-            : el("span", { style: "font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;color:var(--dim);background:#17171d" },
+            : el("span", { style: "font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;color:var(--dim);background:#15261a" },
                 `${P.armed}/${P.count} ARMED`),
         ]),
         el("div", { style: "font-size:12.5px;color:var(--subtle);margin-top:4px" },

@@ -1,5 +1,5 @@
 [Unit]
-Description=Copybot independent 15m fill audit (chain vs books)
+Description=Abomination81 Copybot — independent 15m fill audit (chain vs books)
 After=network-online.target
 Wants=network-online.target
 

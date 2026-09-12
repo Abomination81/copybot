@@ -1,12 +1,12 @@
-# Copybot
+# Abomination81 Copybot
 
 **Their move. Your execution.**
 
 **Built by [Abomination81](https://github.com/Abomination81) · [X @Abomination81](https://x.com/Abomination81)**
 
-![Copybot — low-latency copy execution, built by Abomination81](docs/assets/copybot-hero.svg)
+![Abomination81 Copybot — low-latency copy execution, built by Abomination81](docs/assets/copybot-hero.svg)
 
-Copybot is a self-hosted Polymarket copy-trading engine. It watches configured leaders, sizes entries against your limits, signs orders locally, and follows the configured exit rules. A Rust execution engine handles the trading path; an independent Python guardian and a browser dashboard handle oversight.
+Abomination81 Copybot is a self-hosted Polymarket copy-trading engine. It watches configured leaders, sizes entries against your limits, signs orders locally, and follows the configured exit rules. A Rust execution engine handles the trading path; an independent Python guardian and a browser dashboard handle oversight.
 
 **Private preview · Linux deployment · Rust + Python · Bring your own wallet and feeds**
 

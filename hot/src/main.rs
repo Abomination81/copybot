@@ -1731,6 +1731,7 @@ const RECON_QUIET_SECS: i64 = 120;
 const RECON_RELEASE_QUIET_SECS: i64 = 1_800;
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
+    eprintln!("Abomination81 Copybot — execution engine");
     let cfg_path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "deploy/copybot2.toml".into());

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the independent fill audit every 15 minutes
+Description=Abomination81 Copybot — independent fill audit every 15 minutes
 
 [Timer]
 OnBootSec=5min

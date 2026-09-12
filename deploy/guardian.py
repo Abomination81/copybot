@@ -1313,12 +1313,12 @@ def halt_notifications(lanes, meta, state, now):
     if halted and (not prev):
         st['notify_halted_since'] = now
         st['notify_sent'] = 0
-        msgs.append(('copybot: TRADING HALTED (%d lane%s)' % (len(halted), '' if len(halted) == 1 else 's'), 'Buying has stopped on: %s\nStopped at: %s\n%s\n\nReason recorded by the halting process:\n  %s\n\nExits are UNAFFECTED - the bot still follows each leader out of positions it\nholds. Only new buys are stopped.\n\nA halt does not clear itself unless its cause was a loss of visibility.\n' % (', '.join(halted), notify.local_stamp(now), scorecard.summary_line(scorecard.summarise(SCORECARD_PATH, now)), why)))
+        msgs.append(('Abomination81 Copybot: TRADING HALTED (%d lane%s)' % (len(halted), '' if len(halted) == 1 else 's'), 'Buying has stopped on: %s\nStopped at: %s\n%s\n\nReason recorded by the halting process:\n  %s\n\nExits are UNAFFECTED - the bot still follows each leader out of positions it\nholds. Only new buys are stopped.\n\nA halt does not clear itself unless its cause was a loss of visibility.\n' % (', '.join(halted), notify.local_stamp(now), scorecard.summary_line(scorecard.summarise(SCORECARD_PATH, now)), why)))
         return (msgs, st)
     if halted and prev:
         added = sorted(set(halted) - set(prev))
         if added:
-            msgs.append(('copybot: %d MORE lane(s) halted' % len(added), 'Newly stopped: %s\nAlready stopped: %s\n\nReason:\n  %s\n' % (', '.join(added), ', '.join(prev), why)))
+            msgs.append(('Abomination81 Copybot: %d MORE lane(s) halted' % len(added), 'Newly stopped: %s\nAlready stopped: %s\n\nReason:\n  %s\n' % (', '.join(added), ', '.join(prev), why)))
         since = st.get('notify_halted_since')
         since = float(since) if since is not None else now
         down = now - since
@@ -1329,12 +1329,12 @@ def halt_notifications(lanes, meta, state, now):
             due = HALT_REMIND_SECS[-1] + HALT_REMIND_EVERY * (sent - len(HALT_REMIND_SECS) + 1)
         if down >= due:
             st['notify_sent'] = sent + 1
-            msgs.append(('copybot: STILL HALTED - %s' % human_secs(down), 'Buying has been stopped for %s on: %s\nStopped at: %s\n\nNothing has resumed it. Original reason:\n  %s\n\nEvery leader BUY during this window has been declined.\n' % (human_secs(down), ', '.join(halted), notify.local_stamp(since), why)))
+            msgs.append(('Abomination81 Copybot: STILL HALTED - %s' % human_secs(down), 'Buying has been stopped for %s on: %s\nStopped at: %s\n\nNothing has resumed it. Original reason:\n  %s\n\nEvery leader BUY during this window has been declined.\n' % (human_secs(down), ', '.join(halted), notify.local_stamp(since), why)))
         return (msgs, st)
     if prev and (not halted):
         _since = st.get('notify_halted_since')
         down = now - (float(_since) if _since is not None else now)
-        msgs.append(('copybot: trading resumed', 'Buying is enabled again on all lanes.\n\nIt was stopped for %s.\n' % human_secs(down)))
+        msgs.append(('Abomination81 Copybot: trading resumed', 'Buying is enabled again on all lanes.\n\nIt was stopped for %s.\n' % human_secs(down)))
         st.pop('notify_halted_since', None)
         st.pop('notify_sent', None)
     return (msgs, st)
@@ -1497,7 +1497,7 @@ def check_buywatch_alerts(state, now, log=None):
         log('WARN: ' + m)
     if notify.configured():
         try:
-            notify.send('copybot: buywatch UNSEEN leader buys', '\n'.join(msgs) + '\n\n(Nothing was halted — buywatch reports, a human decides.)\n' + notify.local_stamp(now) + '\n', log=log)
+            notify.send('Abomination81 Copybot: buywatch UNSEEN leader buys', '\n'.join(msgs) + '\n\n(Nothing was halted — buywatch reports, a human decides.)\n' + notify.local_stamp(now) + '\n', log=log)
         except Exception as e:
             log('WARN: buywatch alert email failed: %r' % (e,))
     state['buywatch_alert_t'] = hi
@@ -1966,7 +1966,7 @@ def gather_and_check(dry_run):
             fresh = [x for x in dead if x[0].name not in was]
             if fresh and notify.configured():
                 body = '\n\n'.join(('%s  (%s)\n  %s\n  WHY IT MATTERS: %s' % (x.name, x.alarm, d, x.why) for x, d in fresh))
-                notify.send('copybot: %d ALARM(S) CANNOT FIRE' % len(fresh), 'A guardian self-check found alarms whose sensors are no longer present in live data. They are SILENT, which looks exactly like healthy.\n\n' + body + '\n\nTrading is unaffected; this is a check on the checkers.\n' + notify.local_stamp(now) + '\n', log=log)
+                notify.send('Abomination81 Copybot: %d ALARM(S) CANNOT FIRE' % len(fresh), 'A guardian self-check found alarms whose sensors are no longer present in live data. They are SILENT, which looks exactly like healthy.\n\n' + body + '\n\nTrading is unaffected; this is a check on the checkers.\n' + notify.local_stamp(now) + '\n', log=log)
     except Exception as e:
         log('preflight sweep failed (nothing else affected): %r' % (e,))
     try:
@@ -1983,7 +1983,7 @@ def gather_and_check(dry_run):
                 _feed = {}
             _pf = state.get('preflight_last') or 'not yet run'
             state['digest_t'] = now - DIGEST_EVERY_SECS + DIGEST_RETRY_SECS
-            if notify.send('copybot: weekly check — %s' % ('all quiet' if not any((l.get('halted') for l in (st.get('lanes') or {}).values())) else 'LANES HALTED'), digest_body(st.get('lanes') or {}, scorecard.summarise(SCORECARD_PATH, now), _pf, _feed, now), log=log):
+            if notify.send('Abomination81 Copybot: weekly check — %s' % ('all quiet' if not any((l.get('halted') for l in (st.get('lanes') or {}).values())) else 'LANES HALTED'), digest_body(st.get('lanes') or {}, scorecard.summarise(SCORECARD_PATH, now), _pf, _feed, now), log=log):
                 state['digest_t'] = now
                 log('weekly digest sent')
             else:

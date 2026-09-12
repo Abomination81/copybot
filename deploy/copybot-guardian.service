@@ -1,5 +1,5 @@
 [Unit]
-Description=Copybot independent production guardian
+Description=Abomination81 Copybot — independent production guardian
 After=network-online.target copybot-hot.service copybot-watcher.service
 Wants=network-online.target
 

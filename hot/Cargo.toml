@@ -2,6 +2,9 @@
 autobins = false
 name = "copybot-hot"
 version = "0.1.0"
+description = "Abomination81 Copybot — self-hosted copy-trading execution engine"
+homepage = "https://x.com/Abomination81"
+repository = "https://github.com/Abomination81/copybot"
 edition = "2021"
 
 [dependencies]

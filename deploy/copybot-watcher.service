@@ -1,5 +1,5 @@
 [Unit]
-Description=Copybot independent fill watcher
+Description=Abomination81 Copybot — independent fill watcher
 After=network-online.target
 Wants=network-online.target
 

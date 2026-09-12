@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the buy-side copy audit every 15 minutes
+Description=Abomination81 Copybot — buy-side copy audit every 15 minutes
 
 [Timer]
 OnBootSec=7min

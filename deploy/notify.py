@@ -71,7 +71,7 @@ def main():
         print('NOT CONFIGURED: %s' % why_not_configured())
         print('expected in the environment (systemd EnvironmentFile), never in the repo')
         return 2
-    ok = send('copybot: test alert', 'This is a test from deploy/notify.py.\n\nIf you are reading this, halt alerts can reach you.\nSent %s\n' % local_stamp())
+    ok = send('Abomination81 Copybot: test alert', 'This is a test from deploy/notify.py.\n\nIf you are reading this, halt alerts can reach you.\nSent %s\n' % local_stamp())
     print('sent' if ok else 'FAILED — see the reason above')
     return 0 if ok else 1
 if __name__ == '__main__':

@@ -215,7 +215,7 @@ def main():
         try:
             import notify
             if notify.configured():
-                notify.send('copybot: money-conservation check DIVERGED', 'conserve.py found equity movement the fills do not explain over the last %dd window. Run `python3 deploy/conserve.py --days %d` on the box for the full breakdown. Nothing was halted; this is the check that turns week-three archaeology into day-one questions.\n%s\n' % (a.days, a.days, notify.local_stamp()), log=log)
+                notify.send('Abomination81 Copybot: money-conservation check DIVERGED', 'conserve.py found equity movement the fills do not explain over the last %dd window. Run `python3 deploy/conserve.py --days %d` on the box for the full breakdown. Nothing was halted; this is the check that turns week-three archaeology into day-one questions.\n%s\n' % (a.days, a.days, notify.local_stamp()), log=log)
             else:
                 log('(--notify set but notify.py is not configured: %s)' % notify.why_not_configured())
         except Exception as e:
