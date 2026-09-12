@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#020704"><title>Operations · Copybot</title><link rel="icon" href="assets/copybot-mark.svg"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="guide.css"></head>
+<body><a class="skip" href="#guide">Skip to guide</a><header class="site-header wrap"><a class="brand" href="index.html"><img src="assets/copybot-mark.svg" width="42" height="42" alt=""><span>Copybot<small>by Abomination81</small></span></a><nav aria-label="Main navigation"><a href="index.html">Project home</a><a class="nav-github" href="https://github.com/Abomination81/copybot">GitHub ↗</a></nav></header>
+<main class="wrap guide-layout"><aside><p class="eyebrow">Operator guides</p><nav aria-label="Guide navigation"><a href="install.html">Install</a><a href="configuration.html">Configuration</a><a href="operations.html" aria-current="page">Operations</a><a href="release-scope.html">Release Scope</a></nav><p>Private source preview.<br>No live connection.</p></aside><article id="guide"><h1>Operations</h1>
+<h2>Three controls, three different effects</h2>
+<table>
+<thead>
+<tr>
+<th>Operator state</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Armed</td>
+<td>Entries and exits may execute if all other checks permit them</td>
+</tr>
+<tr>
+<td>Halt buys</td>
+<td>Stops new entries while allowing the existing exit path</td>
+</tr>
+<tr>
+<td>Off</td>
+<td>Disarms that lane; both entry and exit execution are stopped</td>
+</tr>
+</tbody>
+</table>
+<p>A guardian halt is not necessarily a full disarm. Read the specific incident and lane state. Do not repeatedly re-arm to suppress an unexplained fault.</p>
+<h2>Stop the process</h2>
+<pre><code class="language-sh">sudo systemctl stop copybot-hot.service
+sudo systemctl is-active copybot-hot.service
+</code></pre>
+<p>Stopping the engine does not liquidate holdings and does not prove that venue-resting orders were canceled. Check the venue separately. Stopping a service is different from changing persistent arm intent. If you also stop observation services or timers, document that monitoring is no longer running.</p>
+<h2>Restart and recovery</h2>
+<p>Keep the ledger, signal guard, operator state, registry, funding records, and pending-execution evidence together. A restart is not a reset. Never delete state to make a reconciliation warning disappear. The engine's existing recovery logic depends on those files to avoid repeating or forgetting execution.</p>
+<p>Before an upgrade, stop the instance cleanly and take a consistent backup of its configuration, environment, runtime state, and exact executable. Store backups outside Git and restrict access. Record the source commit. Start only one live execution process for a funded account.</p>
+<p>Roll back the executable and configuration deliberately. Do not blindly overwrite newer accounting with an old backup after trades have occurred: restoring old state can duplicate orders or discard fills. Reconcile changed holdings and unknown outcomes before resuming.</p>
+<h2>Things to check</h2>
+<ul>
+<li>Fresh feed and observer timestamps, not just an active process.</li>
+<li>Intended mode and lane state; startup can restore existing operator intent.</li>
+<li>Ledger/custody agreement and unresolved or ambiguous execution.</li>
+<li>Correct funding basis before interpreting P&amp;L.</li>
+<li>Guardian and watcher journals, notification delivery, and writable state paths.</li>
+<li>Venue-resting orders independently of dashboard connection status.</li>
+</ul>
+<p>Engine logs go to journald through the service template. Configure bounded journal retention on the host. The provided logrotate template covers file-based observer logs; adjust paths before installing it. Never commit logs, screenshots, backup archives, or portfolio exports to report a bug. Use a synthetic reproduction.</p>
+</article></main>
+<footer class="wrap"><a href="index.html">Copybot / Abomination81</a><span>Independent software. Not affiliated with Polymarket.</span><a href="https://x.com/Abomination81">X @Abomination81 ↗</a></footer></body></html>

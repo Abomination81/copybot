@@ -1,0 +1,41 @@
+name: Verify source package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+      - name: Install test and documentation dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Release privacy checks
+        run: python scripts/check_release.py
+      - name: Independent credential scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_dir="$(mktemp -d)"
+          curl --fail --silent --show-error --location --max-time 120 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output "$audit_dir/gitleaks.tar.gz"
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$audit_dir/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$audit_dir/gitleaks.tar.gz" -C "$audit_dir" gitleaks
+          "$audit_dir/gitleaks" dir . --redact --no-banner
+      - name: Rust regression tests
+        run: cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot
+      - name: Observer and packaging tests
+        run: python -m pytest deploy/ scripts/test_check_release.py -q -p no:cacheprovider
+      - name: Generated guides are current
+        run: python scripts/build_docs.py --check

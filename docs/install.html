@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#020704"><title>Installation · Copybot</title><link rel="icon" href="assets/copybot-mark.svg"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="guide.css"></head>
+<body><a class="skip" href="#guide">Skip to guide</a><header class="site-header wrap"><a class="brand" href="index.html"><img src="assets/copybot-mark.svg" width="42" height="42" alt=""><span>Copybot<small>by Abomination81</small></span></a><nav aria-label="Main navigation"><a href="index.html">Project home</a><a class="nav-github" href="https://github.com/Abomination81/copybot">GitHub ↗</a></nav></header>
+<main class="wrap guide-layout"><aside><p class="eyebrow">Operator guides</p><nav aria-label="Guide navigation"><a href="install.html" aria-current="page">Install</a><a href="configuration.html">Configuration</a><a href="operations.html">Operations</a><a href="release-scope.html">Release Scope</a></nav><p>Private source preview.<br>No live connection.</p></aside><article id="guide"><h1>Installation</h1>
+<p>This guide installs a separate instance. It does not update or connect to another operator's deployment. The supported service templates target Linux with systemd. Python 3.11+ is required for <code>tomllib</code>; the shipped runtime observers use the standard library.</p>
+<h2>1. Build</h2>
+<p>Install Git, Python 3.11+, a C compiler/linker, and stable Rust using your operating system's package manager and the <a href="https://www.rust-lang.org/tools/install">official Rust installer</a>.</p>
+<pre><code class="language-sh">git clone https://github.com/Abomination81/copybot.git
+cd copybot
+cargo build --locked --release --manifest-path hot/Cargo.toml --bin copybot-hot
+cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot
+</code></pre>
+<p>This builds for the machine running the command. Build on the destination architecture or use your own cross-compilation setup. No prebuilt executable is supplied in this preview.</p>
+<h2>2. Prepare a dedicated install</h2>
+<p>The service examples use a dedicated <code>copybot</code> user and <code>/opt/copybot</code>. Have the host administrator create that account and directory, copy this source tree there, and grant that user ownership. Do not run as root. Copy the built <code>hot/target/release/copybot-hot</code> to <code>/opt/copybot/bin/copybot-hot</code>.</p>
+<p>From <code>/opt/copybot</code>, as the <code>copybot</code> user:</p>
+<pre><code class="language-sh">mkdir -p bin data run
+cp deploy/copybot2.example.toml deploy/copybot2.toml
+cp deploy/copybot.env.example deploy/copybot.env
+chmod 600 deploy/copybot2.toml deploy/copybot.env
+</code></pre>
+<p>The source tree includes every module used by the shipped Python observers. Keep them together in <code>deploy/</code>; do not copy just <code>guardian.py</code>.</p>
+<h2>3. Configure your instance</h2>
+<p>Edit the local files with a private editor or approved secret manager. They are ignored by Git.</p>
+<ul>
+<li><code>funder</code>: your custody/funding address. It is not always the signer address.</li>
+<li><code>signer</code>: the address corresponding to your signing key.</li>
+<li><code>signature_type</code>: the signature/custody mode actually supported by your account. Do not assume every wallet is a Safe merely because the example uses type 2.</li>
+<li><code>PRIVATE_KEY</code>: your signer key, set locally. The engine derives its CLOB API credentials using the existing authentication path.</li>
+<li><code>feed.url</code>: your compatible pending-transaction WebSocket feed, including its private authentication if required.</li>
+<li><code>wallet</code>: the leader you intend to follow, with measured leader statistics and your own budget.</li>
+<li>Observer values: match <code>BOT_DIR</code>, <code>BOT_CONFIG</code>, <code>BOT_PORT</code>, <code>COPYBOT_API</code>, <code>OUR_WALLET</code>, <code>FILLWATCH_FUNDER</code>, <code>WATCH_WALLET</code>, and your RPC URL to this instance.</li>
+</ul>
+<p>Read <a href="configuration.html">configuration</a>. The example is deliberately incomplete: all lanes are disabled, wallet fields are symbolic, and the statistics are zero. The existing engine refuses this configuration until you supply valid values. The example is not an investment recommendation.</p>
+<h2>4. Establish private dashboard access</h2>
+<p>The backend binds to loopback. Use a dedicated Tailscale hostname and an access policy restricted to your operators. Tailscale Serve can terminate HTTPS and proxy to the loopback port:</p>
+<pre><code class="language-sh">sudo tailscale serve --bg http://127.0.0.1:8807
+</code></pre>
+<p>Confirm the resulting HTTPS hostname with <code>tailscale serve status</code>. Your dashboard is at <code>/pool</code>. Use Serve, not public Funnel. Do not open port 8807 in the cloud firewall or publish the backend through an unauthenticated proxy. Refer to the <a href="https://tailscale.com/kb/1312/serve">Tailscale Serve documentation</a> for your installed version.</p>
+<p>The application relies on this external access boundary; a private GitHub repository does not protect a deployed dashboard. The optional Cloudflare identity header in the engine is audit metadata, not standalone authentication.</p>
+<h2>5. Start in dry mode</h2>
+<p>Keep <code>bot.mode = &quot;dry&quot;</code>. Fill in valid configuration and enable only the lane you intend to observe. Have the host administrator install the included service and timer files under <code>/etc/systemd/system/</code> and run <code>systemctl daemon-reload</code>.</p>
+<p>Start only the engine initially:</p>
+<pre><code class="language-sh">sudo systemctl start copybot-hot.service
+sudo systemctl status copybot-hot.service
+sudo journalctl -u copybot-hot.service -n 100 --no-pager
+</code></pre>
+<p>Open the private HTTPS dashboard. Check feed activity, the selected leader, mode, lane readiness, balances, and the absence of boot faults. Do not share the unredacted journal or dashboard.</p>
+<h2>6. Bring up the independent observers</h2>
+<p>Use the shared environment file with every service. <code>BOT_PORT</code> must match <code>DASHBOARD_PORT</code>; do not rely on their different code defaults. Start the watcher service and guardian, fillwatch, and buywatch timers from the supplied templates. Review their journals and confirm fresh observations. Enable <code>GUARDIAN_ENFORCE=1</code> when you intend its existing halt rules to operate; restart the observer processes to pick up changed environment values.</p>
+<p>Service templates preserve the existing intervals. They are not automatically installed, enabled, or started by a build. Validate their paths and environment on your host before enabling startup at boot.</p>
+<h2>7. Enable live execution deliberately</h2>
+<p>Only after checking your configuration, credentials, access controls, and observer health, change <code>bot.mode</code> to <code>&quot;live&quot;</code> and restart your instance. A fresh lane must then be explicitly armed through the dashboard, using the confirmation phrase shown there. No page in <code>docs/</code> can arm a bot.</p>
+<p>Existing operator intent is persistent. An already-armed instance may resume after a restart. Use the stop controls described in <a href="operations.html">operations</a>, not a restart, when you want trading stopped.</p>
+</article></main>
+<footer class="wrap"><a href="index.html">Copybot / Abomination81</a><span>Independent software. Not affiliated with Polymarket.</span><a href="https://x.com/Abomination81">X @Abomination81 ↗</a></footer></body></html>

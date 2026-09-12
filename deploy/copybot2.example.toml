@@ -1,0 +1,49 @@
+# Copy to deploy/copybot2.toml (ignored by Git). These are illustrative values,
+# not a copy of an operator's strategy. Replace every YOUR_* field before use.
+[bot]
+mode = "dry"
+clob_host = "https://clob.polymarket.com"
+funder = "YOUR_FUNDER_ADDRESS"
+signer = "YOUR_SIGNER_ADDRESS"
+signature_type = 2
+events_path = "data/events.jsonl"
+control_path = "run/operator.json"
+ledger_path = "data/ledger.jsonl"
+signal_guard_path = "data/signal-guard.jsonl"
+recycle_secs = 0
+race_h2 = true
+
+[[feed]]
+name = "primary"
+url = "wss://YOUR_FEED_HOST/YOUR_FEED_PATH"
+sockets = 1
+
+[[lane]]
+name = "leader_alpha"
+wallet = "YOUR_LEADER_ADDRESS"
+enabled = false
+# Supply your leader's measured values; do not reuse someone else's statistics.
+leader_max_order_usd = 0.0
+leader_peak_exposure_usd = 0.0
+
+[lane.sizing]
+mode = "pct"
+pct = 0.005
+compound = false
+max_effective_pct = 0.05
+min_order_usd = 1.0
+min_fill_floor = true
+
+[lane.budget]
+bankroll_usd = 100.0
+max_buy_price = 0.95
+min_buy_price = 0.02
+
+[lane.execution]
+mode = "taker"
+buy_slippage_c = 0.15
+sell_slippage_c = 1.0
+sell_floor_frac = 0.0
+sell_all_frac = 0.0
+copy_makers = false
+copy_maker_sells = false

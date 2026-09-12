@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the buy-side copy audit every 15 minutes
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=15min
+AccuracySec=30s
+Persistent=false
+Unit=copybot-buywatch.service
+
+[Install]
+WantedBy=timers.target

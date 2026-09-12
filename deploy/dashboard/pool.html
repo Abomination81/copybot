@@ -1,0 +1,1931 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Copybot / Pool</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Crect%20width%3D%2732%27%20height%3D%2732%27%20rx%3D%277%27%20fill%3D%27%230b0b0e%27%2F%3E%3Crect%20x%3D%275%27%20y%3D%277%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%234c82fb%27%20opacity%3D%27.42%27%2F%3E%3Crect%20x%3D%2711%27%20y%3D%2713%27%20width%3D%2713%27%20height%3D%2713%27%20rx%3D%273.5%27%20fill%3D%27%234c82fb%27%20stroke%3D%27%230b0b0e%27%20stroke-width%3D%272%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%274.5%27%20fill%3D%27%230b0b0e%27%2F%3E%3Ccircle%20cx%3D%2724.5%27%20cy%3D%277.5%27%20r%3D%273%27%20fill%3D%27%235a5a65%27%2F%3E%3C%2Fsvg%3E">
+<meta name="theme-color" content="#08080a">
+<meta name="apple-mobile-web-app-title" content="Copybot">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08080a; --panel:#0b0b0e; --panel2:#0e0e12; --raised:#101014;
+  --line:#17171c; --border:#1c1c22;
+  --ink:#f2f2f5; --dim:#8b8b96; --subtle:#7c7c88; --faint:#5a5a65;
+  --indigo:oklch(0.68 0.14 265); --indigo-l:oklch(0.72 0.14 265);
+  --mint:oklch(0.82 0.13 165); --rose:oklch(0.72 0.15 18); --amber:#f2c14e;
+  --sans:'Instrument Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);display:flex;justify-content:center;padding:0;
+  font-family:var(--sans);font-variant-numeric:tabular-nums;color:var(--ink)}
+/* ⚠️ THIS WAS `width:1440px;flex:none`, which is what made the page static: below
+   1440 it clipped, above it, it letterboxed against a grey surround. Fluid with a cap
+   instead — the cap exists because line lengths past ~1800px stop being readable, not
+   because the layout cannot stretch. */
+#app{width:100%;max-width:1800px;min-height:100vh;background:var(--bg);
+  display:flex;flex-direction:column;font-size:13px}
+button{font-family:var(--sans)}
+.seg{display:flex;gap:2px;padding:2px;background:var(--raised);border:1px solid var(--border);border-radius:8px}
+.seg>span{cursor:pointer;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:500;color:var(--dim)}
+.seg>span.on{background:var(--raised);color:var(--ink);box-shadow:inset 0 0 0 1px #24242c}
+.ed{transition:opacity .12s,border-color .12s}
+.locked .ed{opacity:.55;cursor:not-allowed}
+.locked .knob{opacity:.45;cursor:not-allowed}
+.scroll{overflow-y:auto;min-height:0}
+.scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:#20202a;border-radius:4px}
+a{color:var(--indigo-l);text-decoration:none}
+.spinner{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);
+  border-top-color:var(--indigo);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── RESIZE HANDLES ────────────────────────────────────────────────────────────
+   Invisible until you approach them. A divider that is always highlighted turns a
+   dense dashboard into a grid of lines; one that is invisible is undiscoverable. The
+   compromise is a wide, generous HIT AREA (6-9px, far more than the 1px line it sits
+   on) that only paints on hover. */
+.dragh{position:relative;flex:none;z-index:5}
+.dragh-x{width:7px;margin:0 -3.5px;cursor:col-resize}
+.dragh-y{height:9px;margin:-4.5px 0;cursor:row-resize}
+.dragh::after{content:"";position:absolute;background:transparent;transition:background .12s}
+.dragh-x::after{inset:0 3px}
+.dragh-y::after{inset:4px 0}
+.dragh:hover::after,.dragh.on::after{background:var(--indigo)}
+.colgrip{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:3}
+.colgrip::after{content:"";position:absolute;top:4px;bottom:4px;left:3px;width:1px;
+  background:transparent;transition:background .12s}
+.colgrip:hover::after{background:var(--indigo)}
+@media (max-width:899px){ .dragh-x{display:none} }
+
+/* ── RESPONSIVE LAYOUT ─────────────────────────────────────────────────────────
+   Three regions — roster (wallets), main (chart + table), rail (health) — and the
+   breakpoints are chosen by what each region STOPS BEING USEFUL AT, not by device
+   names. The roster needs ~300px before wallet names and P&L collide. The table's
+   nine columns need ~760px before they crush. The rail is the first thing to give up
+   its column because it is a monitor, not something you interact with continuously.
+
+   So, widest to narrowest:
+     ≥1240  all three side by side
+     <1240  the rail drops BELOW the chart and table, still in the main column
+     <900   the roster goes full-width on top and the page becomes one column
+   Below that everything is already stacked and only spacing tightens. */
+.shell{flex:1;display:flex;min-height:0}
+/* ⚠️ `min-width:0` IS LOAD-BEARING, NOT TIDINESS. A flex item defaults to
+   min-width:auto, which refuses to go below its content's min-content width — so the
+   roster ignored its own 392px basis and took 544px, stealing it from the table, which
+   then needed a horizontal scrollbar on a 1600px screen. Measured before/after:
+   roster 544 -> 392, table area 676 -> 828. Every fixed-basis column here needs it. */
+.roster{flex:0 0 clamp(300px,26vw,392px);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;min-width:0}
+.mainpane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.contentrow{flex:1;display:flex;min-height:0;border-top:1px solid var(--line)}
+.contentcol{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.rail{flex:0 0 clamp(272px,21vw,330px);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;min-width:0}
+/* auto-fit, so the KPI strip reflows from 5-up to 3-up to 2-up on its own rather
+   than needing a breakpoint of its own */
+.kpis{flex:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  padding:14px 18px;gap:1px;background:var(--line)}
+/* The table's columns are sized in px on purpose (numbers should not reflow), so the
+   table scrolls sideways inside its own box rather than squeezing. The PAGE must
+   never scroll horizontally — only this. */
+.tblscroll{flex:1;min-height:0;overflow:auto}
+.tblmin{min-width:720px}
+/* ── ticker (occupies the slot the old header used to) ────────────────────────── */
+.ticker{flex:none;overflow:hidden;background:var(--panel2);border-bottom:1px solid var(--line);
+  white-space:nowrap;position:relative}
+.ticker::before,.ticker::after{content:"";position:absolute;top:0;bottom:0;width:36px;
+  z-index:2;pointer-events:none}
+.ticker::before{left:0;background:linear-gradient(90deg,var(--panel2),transparent)}
+.ticker::after{right:0;background:linear-gradient(270deg,var(--panel2),transparent)}
+.ticker-track{display:inline-flex;align-items:center;gap:26px;padding:9px 16px;
+  animation:tickerScroll 42s linear infinite}
+.ticker-track:hover{animation-play-state:paused}
+@keyframes tickerScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tick{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.tick b{color:var(--ink);font-weight:500}
+.tick .dot{width:3px;height:3px;border-radius:50%;background:var(--border);flex:none}
+.ticker-empty{padding:9px 16px;font-size:11px;color:var(--faint);font-family:var(--mono)}
+
+@media (max-width:1239px){
+  .contentrow{flex-direction:column}
+  .rail{flex:none;width:auto;border-left:none;border-top:1px solid var(--line);
+    max-height:44vh}
+  /* side by side once it is a full-width strip — the wallet list and the feed read
+     better as two columns than as one very long one */
+  .railbody{display:grid;grid-template-columns:1fr 1fr;align-items:start}
+}
+@media (max-width:899px){
+  .shell{flex-direction:column}
+  .roster{flex:none;width:auto;border-right:none;border-bottom:1px solid var(--line);
+    max-height:52vh}
+  .railbody{grid-template-columns:1fr}
+  .kpis{padding:12px}
+  .ticker-track{animation-duration:30s}
+  .hide-sm{display:none}
+}
+@media (max-width:600px){
+  #app{font-size:12.5px}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(128px,1fr))}
+  .modal{padding:16px}
+  /* a 440px-wide toast on a 375px screen is a horizontal scrollbar */
+  #toast{left:12px;right:12px;bottom:12px;max-width:none}
+}
+/* ── CHANGE FLASH ──────────────────────────────────────────────────────────
+   A number that moved should announce itself. Direction is encoded in the
+   colour so a glance tells you which way, and .9s is long enough to catch
+   from peripheral vision without smearing into the next tick. */
+.tick-up{animation:tkUp .9s}
+.tick-dn{animation:tkDn .9s}
+.tick-new{animation:tkNew 1.4s}
+@keyframes tkUp{0%{background:oklch(0.82 0.13 165 / .30)}100%{background:transparent}}
+@keyframes tkDn{0%{background:oklch(0.72 0.15 18 / .30)}100%{background:transparent}}
+@keyframes tkNew{0%{background:oklch(0.68 0.14 265 / .34)}100%{background:transparent}}
+#toast{position:fixed;right:18px;bottom:18px;max-width:440px;background:var(--panel2);
+  border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:11.5px;
+  display:none;z-index:80;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#toast .t{font-weight:600;margin-bottom:5px;color:var(--amber)}
+#toast pre{margin:6px 0 0;font-family:var(--mono);font-size:10.5px;color:var(--dim);
+  white-space:pre-wrap;word-break:break-all}
+/* ── response-time bar tooltip — a shared, cursor-following singleton, same idea
+   as #toast: one element, repositioned and refilled per hover rather than one per
+   bar. pointer-events:none so it can never itself become the hover target. */
+#rtTip{position:fixed;background:var(--panel2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;font-size:11px;pointer-events:none;z-index:85;
+  box-shadow:0 6px 20px rgba(0,0,0,.5);display:none;max-width:260px}
+#rtTip .n{font-family:var(--mono);font-size:15px;font-weight:600;margin-bottom:3px}
+#rtTip .w{color:var(--subtle)}
+#rtTip .m{color:var(--dim);margin-top:2px;line-height:1.4}
+#rtTip .a{color:var(--faint);margin-top:4px;font-size:10px}
+.overlay{position:fixed;inset:0;background:rgba(4,6,10,.74);display:flex;align-items:center;
+  justify-content:center;z-index:90;padding:20px}
+.modal{background:var(--panel2);border:1px solid var(--border);border-radius:12px;max-width:440px;width:100%;padding:22px}
+.modal h3{margin:0 0 6px;font-size:16px}
+.warnbox{border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px;line-height:1.5}
+input[type=text],input[type=number]{background:#0e0e12;border:1px solid var(--border);color:var(--ink);
+  border-radius:7px;padding:7px 9px;font-family:var(--mono);font-size:12px;width:100%}
+@media (prefers-reduced-motion:reduce){
+  .ticker-track{animation:none}
+}
+@keyframes haltpulse{0%,100%{opacity:1}50%{opacity:.45}}
+/* ── BLIND-AUDIT BANNER ───────────────────────────────────────────────────────────
+ * `watcher_feed` stopped halting buys on 2026-08-19 (it could not tell a quiet venue
+ * from a dead feed, and its mistimed halt cost ~$896 of intended copy). The halt WAS
+ * the notification — remove it and the outage becomes invisible, which is strictly
+ * worse than the false alarm. This is the replacement, and it is deliberately loud:
+ * full width, top of page, above every other element, impossible to scroll past. */
+.blindbar{background:linear-gradient(180deg,#5b0f0f,#3d0a0a);border:2px solid #ff4d4d;
+  border-radius:10px;margin:0 18px 12px;padding:14px 18px;display:flex;align-items:center;
+  gap:14px;box-shadow:0 0 0 1px rgba(255,77,77,.25),0 6px 22px rgba(255,0,0,.18)}
+.blindbar .dot{width:13px;height:13px;border-radius:50%;background:#ff2d2d;flex:none;
+  box-shadow:0 0 10px #ff2d2d;animation:haltpulse 1.1s ease-in-out infinite}
+.blindbar h4{margin:0 0 3px;font-size:15px;font-weight:700;letter-spacing:.4px;
+  color:#ffdede;text-transform:uppercase}
+.blindbar p{margin:0;font-size:12.5px;line-height:1.5;color:#ffb4b4}
+.blindbar .age{font-family:var(--mono);font-size:12px;color:#ff8c8c;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.blindbar .dot{animation:none}}
+</style></head><body><div id="app"></div><div id="toast"></div><div id="modal"></div>
+<script>
+
+const READ_ONLY = false;
+
+const $ = s => document.querySelector(s);
+const el = (t, a = {}, kids = []) => {
+  const n = document.createElement(t);
+  for (const [k, v] of Object.entries(a)) {
+    if (k === "style") n.style.cssText = v;
+    else if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+
+    else if (typeof v === "boolean") { if (v) n.setAttribute(k, ""); else n.removeAttribute(k); }
+    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  }
+  (Array.isArray(kids) ? kids : [kids]).forEach(c =>
+    n.append(c instanceof Node ? c : document.createTextNode(String(c))));
+  return n;
+};
+
+const NOVAL = "—";
+const known = v => v !== null && v !== undefined && Number.isFinite(v);
+const usd = (v, d = 2) => !known(v) ? NOVAL : (v < 0 ? "-$" : "$") +
+  Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const sgn = (v, d = 2) => !known(v) ? NOVAL : (v >= 0 ? "+$" : "-$") +
+  Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+
+
+const sumKnown = (rows, pick) => rows.reduce(
+  (a, r) => (a === null || !known(pick(r))) ? null : a + pick(r), 0);
+
+
+const pct = (v, d = 2) => !known(v) ? NOVAL : (v * 100).toFixed(d) + "%";
+const ratio = (num, den, d = 2) =>
+  (!known(num) || !known(den) || !den) ? NOVAL : (num / den * 100).toFixed(d) + "%";
+const col = v => v > 0 ? "var(--mint)" : v < 0 ? "var(--rose)" : "var(--ink)";
+const when = ts => ts ? new Date(ts * 1000).toLocaleString(undefined,
+  { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+
+
+function commit(intent) {
+  if (READ_ONLY) {
+    toast("Read-only — not sent", `${intent.method} ${intent.url}\n` +
+      JSON.stringify(intent.body, null, 2));
+    return Promise.resolve({ ok: true, readOnly: true });
+  }
+  return fetch(intent.url, {
+    method: intent.method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(intent.body),
+
+  }).then(
+    r => r.json().catch(() => ({})).then(j => ({
+      ...j, ok: r.ok, status: r.status,
+      error: r.ok ? null : (j && j.error) || `HTTP ${r.status}`,
+    })),
+    e => ({ ok: false, status: 0, error: String(e && e.message || e) })
+  );
+}
+
+function driftByLane(pool) {
+  const out = {};
+  ((pool && pool.lanes) || []).forEach(l => {
+    if (typeof l.share_drift === "number") out[l.name] = l.share_drift;
+  });
+  return out;
+}
+
+const FAV = (dot, bright) =>
+  "data:image/svg+xml," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
+    "<rect width='32' height='32' rx='7' fill='#0b0b0e'/>" +
+    "<rect x='5' y='7' width='13' height='13' rx='3.5' fill='#4c82fb' opacity='" + (bright ? "1" : ".42") + "'/>" +
+    "<rect x='11' y='13' width='13' height='13' rx='3.5' fill='#4c82fb' stroke='#0b0b0e' stroke-width='2'/>" +
+    "<circle cx='24.5' cy='7.5' r='4.5' fill='#0b0b0e'/>" +
+    "<circle cx='24.5' cy='7.5' r='3' fill='" + (bright ? "#ffffff" : dot) + "'/></svg>");
+
+const STALE_HALT_SECS = 15 * 60;
+
+function haltAge(l) {
+  if (!("halted_since" in l)) return undefined;
+  const since = Number(l.halted_since);
+  if (!Number.isFinite(since) || since <= 0) return null;
+  return Math.max(0, Math.floor(Date.now() / 1000) - since);
+}
+function haltIsStale(l) {
+  const a = haltAge(l);
+  return a === null || (typeof a === "number" && a >= STALE_HALT_SECS);
+}
+function humanSecs(n) {
+  if (n < 60) return n + "s";
+  if (n < 3600) return Math.floor(n / 60) + "m";
+  if (n < 86400) return (n / 3600).toFixed(1) + "h";
+  return (n / 86400).toFixed(1) + "d";
+}
+function haltChip(l) {
+  const age = haltAge(l);
+  const stale = haltIsStale(l);
+  const label = typeof age === "number" ? "HALTED " + humanSecs(age) : "HALTED";
+  const st = stale
+    ? "background:#ff9d95;color:#0b0b0f;animation:haltpulse 1.6s ease-in-out infinite"
+    : "background:rgba(242,193,78,.14);color:var(--amber)";
+  return el("span", {
+    title: stale ? "This lane has bought nothing for " + (typeof age === "number" ? humanSecs(age) : "an unknown time")
+                 + " and will NOT resume on its own — clear the halt or diagnose it."
+                 : "Buys paused; exits still mirroring.",
+    style: "font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;" + st,
+  }, label);
+}
+
+const HEALTH_DOT = { stopped: "#ff9d95", warn: "#f2c14e", live: "#5fdd9d", idle: "#5a5a65" };
+
+function healthState() {
+  if (!S.pool) return "idle";
+  const lanes = S.pool.lanes || [];
+  if (lanes.some(x => x.halt_latch)) return "stopped";
+
+  if (lanes.some(x => x.armed && x.halted && haltIsStale(x))) return "stopped";
+
+
+  if (S.connDown || S.authExpired) return "warn";
+
+  if (S.src.positions.failing) return "warn";
+
+
+  if (lanes.some(x => x.armed && x.ready === false)) return "warn";
+  if (lanes.some(x => x.boot_fault)) return "warn";
+
+  const cutoff = (Date.now() / 1000) - (S.errorsActiveWindow || 21600);
+  if ((S.errors || []).some(e => e.severity === "stop" && (e.t || 0) >= cutoff)) return "warn";
+  if (lanes.some(x => x.armed && !x.halted)) return "live";
+  if (lanes.some(x => x.armed)) return "warn";
+  return "idle";
+}
+
+let favCur = null;
+let favFlashing = false;
+function setFavicon() {
+  if (favFlashing) return;
+  const st = healthState();
+  if (st === favCur) return;
+  favCur = st;
+  const link = document.getElementById("favicon");
+  if (link) link.href = FAV(HEALTH_DOT[st]);
+}
+
+let lastTradeKey = undefined;
+let flashTimer = null;
+function noteLatestTrade(t) {
+  const key = t ? `${t.t}:${t.token}:${t.side}:${t.shares}` : null;
+  if (lastTradeKey === undefined) { lastTradeKey = key; return; }
+  if (key === lastTradeKey) return;
+  lastTradeKey = key;
+  flashFavicon();
+}
+function flashFavicon() {
+  const link = document.getElementById("favicon");
+  if (!link) return;
+  clearInterval(flashTimer);
+  favFlashing = true;
+  let n = 0, on = true;
+  const tick = () => {
+    link.href = FAV(HEALTH_DOT[healthState()], on);
+    on = !on;
+    if (++n >= 7) {
+      clearInterval(flashTimer);
+      favFlashing = false;
+      favCur = null;
+      setFavicon();
+    }
+  };
+  tick();
+  flashTimer = setInterval(tick, 200);
+}
+
+let toastTimer = null;
+function toast(title, detail) {
+  const t = $("#toast");
+  t.innerHTML = "";
+  t.append(el("div", { class: "t" }, title), el("pre", {}, detail));
+  t.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.style.display = "none"), 6000);
+}
+
+
+const S = {
+  errors: [], errorsByLane: [], errorsAllTimeByLane: [], errorsActiveWindow: 21600,
+  drift: {},
+  pane: {}, cols: {},
+  dragging: false,
+  pool: null, positions: [], trades: [], status: null,
+  tickerTrades: [], responseTimes: [],
+  equity: {},
+  focus: null,
+  openLane: null,
+  metric: "total",
+  table: "open",
+  locked: true,
+  connDown: false,
+  authExpired: false,
+  lastGoodAt: null,
+
+  src: {
+    positions: { failing: false, partial: false, at: null, why: null },
+  },
+  edits: {},
+};
+
+const api = (p) => fetch(p, { cache: "no-store", redirect: "manual" })
+  .then(r => {
+    if (r.type === "opaqueredirect" || r.status === 0) { S.authExpired = true; return null; }
+    if (!r.ok) return null;
+    S.authExpired = false;
+    return r.json().catch(() => null);
+  })
+  .then(j => (j && j.status === "stale") ? null : j)
+  .catch(() => null);
+
+function noteConnection(ok) {
+  S.connDown = !ok;
+  if (ok) S.lastGoodAt = Date.now();
+}
+
+function notePositions(pos) {
+  const partial = !!(pos && pos.complete === false);
+  S.src.positions = {
+    failing: !pos,
+    partial,
+    at: pos ? Date.now() : S.src.positions.at,
+    why: !pos ? "the positions endpoint is not answering"
+        : partial ? (pos.completeness || "the venue returned only part of the portfolio")
+        : null,
+  };
+}
+
+async function load() {
+  const [pool, pos, status, errs] = await Promise.all([
+    api("/api/pool"), api("/api/positions"), api("/api/status"), api("/api/errors"),
+  ]);
+
+  noteConnection(!!pool);
+  if (pool) S.pool = pool;
+  notePositions(pos);
+  if (pos) S.positions = pos.positions || [];
+  if (status) S.status = status;
+  if (errs) {
+    S.errors = errs.errors || [];
+
+    S.errorsByLane = errs.active_by_lane || errs.by_lane || [];
+    S.errorsAllTimeByLane = errs.by_lane || [];
+    S.errorsActiveWindow = errs.active_window_secs || S.errorsActiveWindow;
+  }
+  S.drift = driftByLane(S.pool);
+  const lanes = (S.pool?.lanes || []).map(l => l.name);
+  const eqs = await Promise.all([
+    api("/api/equity?lane=all"), ...lanes.map(n => api(`/api/equity?lane=${encodeURIComponent(n)}`)),
+  ]);
+  S.equity.all = eqs[0]?.points || [];
+  lanes.forEach((n, i) => (S.equity[n] = eqs[i + 1]?.points || []));
+  const [tr, rts] = await Promise.all([
+    api(`/api/trades?lane=${encodeURIComponent(S.focus || "all")}&limit=60`),
+    api("/api/response_times"),
+  ]);
+  S.trades = tr?.trades || [];
+
+  S.tickerTrades = S.trades.slice(0, 20);
+  noteLatestTrade(S.tickerTrades[0] || null);
+  S.responseTimes = rts?.samples || [];
+  render();
+}
+
+const lane = n => (S.pool?.lanes || []).find(l => l.name === n);
+
+const viewLane = () => S.focus ? lane(S.focus) : null;
+
+function setFocus(name) {
+  S.focus = name || null;
+  if (S.openLane && S.openLane !== S.focus) S.openLane = null;
+  refreshTrades();
+}
+
+function poolView() {
+
+  const all = S.pool?.lanes || [];
+  const fundable = all.filter(l => !l.retired && l.enabled !== false);
+  const seed = fundable.reduce((a, l) => a + (l.seed_usd || 0), 0);
+  const realised = all.reduce((a, l) => a + (l.realised_pnl || 0), 0);
+
+
+  const unreal = sumKnown(S.positions, p => p.unrealised);
+  const deployed = all.reduce((a, l) => a + (l.open_usd || 0), 0);
+  const spent = all.reduce((a, l) => a + (l.spent_today || 0), 0);
+  return {
+    name: null, seed_usd: seed, realised_pnl: realised, unreal,
+    open_usd: deployed, spent_today: spent,
+    virtual_bankroll: fundable.reduce((a, l) => a + (l.virtual_bankroll || 0), 0),
+    armed: all.filter(l => l.armed).length,
+    count: fundable.length,
+
+    retired: all.filter(l => l.retired || l.enabled === false).length,
+    retired_open_usd: all.filter(l => l.retired || l.enabled === false)
+                         .reduce((a, l) => a + (l.open_usd || 0), 0),
+    positions: S.positions,
+  };
+}
+const posOf = n => S.positions.filter(p => p.lane === n);
+const unrealOf = n => sumKnown(posOf(n), p => p.unrealised);
+
+const dragOf = p => (p.drag_known && p.leader_price)
+  ? (p.our_price - p.leader_price) * 100 : null;
+
+
+const titleOf = tok => S.positions.find(q => q.token === tok)?.title || ("token …" + String(tok).slice(-8));
+
+const PREV = new Map();
+function flashVal(node, key, value) {
+  if (value === null || value === undefined || Number.isNaN(value)) return node;
+  const had = PREV.has(key), before = PREV.get(key);
+  PREV.set(key, value);
+  if (!had || Math.abs(value - before) < 1e-9) return node;
+  node.classList.remove("tick-up", "tick-dn");
+  void node.offsetWidth;
+  node.classList.add(value > before ? "tick-up" : "tick-dn");
+  return node;
+}
+
+const SEEN = new Set();
+let seenPrimed = false;
+function flashNew(node, key) {
+  if (SEEN.has(key)) return node;
+  SEEN.add(key);
+  if (seenPrimed) { void node.offsetWidth; node.classList.add("tick-new"); }
+  return node;
+}
+
+function chartSVG(pts, unreal) {
+  if (!pts?.length) return null;
+  const W = 600, H = 104;
+
+  const last = pts[pts.length - 1].value;
+  const total = known(unreal) ? last + unreal : null;
+  const vals = pts.map(p => p.value).concat(unreal ? [total] : []);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = ((hi - lo) || 1) * .14; lo -= pad; hi += pad;
+  const rng = (hi - lo) || 1, n = pts.length, xw = unreal ? W * .93 : W;
+  const X = i => i / Math.max(n - 1, 1) * xw, Y = v => H - (v - lo) / rng * H;
+  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(" ");
+  const zero = (lo < 0 && hi > 0)
+    ? `<line x1="0" y1="${Y(0).toFixed(1)}" x2="${W}" y2="${Y(0).toFixed(1)}" stroke="#2a2a33" stroke-width="1" stroke-dasharray="3 3"/>` : "";
+  const step = unreal
+    ? `<line x1="${X(n-1).toFixed(1)}" y1="${Y(last).toFixed(1)}" x2="${W}" y2="${Y(total).toFixed(1)}"
+        stroke="${unreal >= 0 ? "var(--mint)" : "var(--rose)"}" stroke-width="1.6" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+       <circle cx="${W}" cy="${Y(total).toFixed(1)}" r="2.6" fill="${unreal >= 0 ? "var(--mint)" : "var(--rose)"}"/>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+    ${[26,52,78].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#16161b" stroke-width="1"/>`).join("")}
+    ${zero}
+    <polygon points="0,${H} ${line} ${X(n-1).toFixed(1)},${H}" fill="oklch(0.68 0.14 265 / 0.13)"/>
+    <polyline points="${line}" fill="none" stroke="var(--indigo-l)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+    ${step}</svg>`;
+}
+function spark(pts) {
+  if (!pts?.length) return el("div", { style: "width:76px;height:22px;flex:none" });
+  const step = Math.max(1, Math.floor(pts.length / 16));
+  const s = pts.filter((_, i) => i % step === 0).slice(-16).map(p => p.value);
+  const lo = Math.min(...s), hi = Math.max(...s), rng = (hi - lo) || 1;
+  const box = el("div", { style: "display:flex;align-items:flex-end;gap:1.5px;height:22px;flex:none" });
+  s.forEach((v, i) => box.append(el("div", {
+    style: `width:3px;border-radius:1px;height:${Math.max(2, Math.round((v-lo)/rng*22))}px;` +
+           `background:${i === 0 || v >= s[i-1] ? "var(--mint)" : "var(--rose)"}`
+  })));
+  return box;
+}
+
+
+const kpi = (l, v, c, s) => el("div", { style: "background:var(--bg);padding:2px 16px 2px 0" }, [
+  el("div", { style: "font-size:11.5px;color:var(--subtle)" }, l),
+  el("div", { style: `font-family:var(--mono);font-size:19px;font-weight:500;letter-spacing:-.02em;margin-top:5px;color:${c}` }, v),
+  el("div", { style: "font-size:11px;color:var(--faint);margin-top:3px" }, s),
+]);
+const dmet = (l, v, c) => el("div", { style: "display:flex;justify-content:space-between;gap:10px;padding:3.5px 0" }, [
+  el("span", { style: "font-size:11px;color:var(--subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, l),
+  el("span", { style: `font-family:var(--mono);font-size:11px;white-space:nowrap;color:${c || "var(--ink)"}` }, v),
+]);
+const dgroup = (t, rows) => el("div", { style: "padding:8px 0 2px" },
+  [el("div", { style: "font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:3px" }, t), ...rows]);
+function segbar(id, opts, cur, on) {
+  return el("div", { class: "seg", id }, opts.map(([k, label]) =>
+    el("span", { class: k === cur ? "on" : "", onclick: () => on(k) }, label)));
+}
+const grid = (cols, cells, head) => el("div", {
+  style: `display:grid;grid-template-columns:${cols};align-items:center;` +
+         (head ? "" : "border-bottom:1px solid #121216")
+}, cells);
+
+const LS_KEY = "copybot.layout.v1";
+const PANE_MIN = { roster: 240, rail: 240, chart: 90 };
+const PANE_MAX = { roster: 720, rail: 640, chart: 460 };
+const COL_MIN = 38;
+
+function loadLayout() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    return { pane: v.pane || {}, cols: v.cols || {} };
+  } catch (e) { return { pane: {}, cols: {} }; }
+}
+function saveLayout() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ pane: S.pane, cols: S.cols })); }
+  catch (e) {                                                                     }
+}
+
+const paneDraggable = key =>
+  key === "chart" ? true
+  : key === "rail" ? window.innerWidth >= 1240
+  : window.innerWidth >= 900;
+
+function clampPane(key, v) {
+  const lo = PANE_MIN[key], hi = Math.min(PANE_MAX[key],
+    key === "chart" ? Math.max(PANE_MIN.chart, window.innerHeight - 260)
+                    : Math.max(PANE_MIN[key], window.innerWidth - 420));
+  return Math.max(lo, Math.min(hi, v));
+}
+
+
+function applySizes() {
+  const r = document.querySelector(".roster");
+  if (r) r.style.flexBasis = (paneDraggable("roster") && S.pane.roster)
+    ? clampPane("roster", S.pane.roster) + "px" : "";
+  const rail = document.querySelector(".rail");
+  if (rail) rail.style.flexBasis = (paneDraggable("rail") && S.pane.rail)
+    ? clampPane("rail", S.pane.rail) + "px" : "";
+  const ch = document.querySelector(".chartbox");
+  if (ch && S.pane.chart) ch.style.height = clampPane("chart", S.pane.chart) + "px";
+}
+
+function dragHandle(key, axis, sign, getEl) {
+  const live = paneDraggable(key);
+  const h = el("div", {
+    class: "dragh " + (axis === "x" ? "dragh-x" : "dragh-y"),
+    title: live ? "drag to resize · double-click to reset" : "",
+    style: live ? "" : "display:none",
+  });
+  if (!live) return h;
+
+  h.onmousedown = ev => {
+    ev.preventDefault();
+    const node = getEl(); if (!node) return;
+    const start = axis === "x" ? ev.clientX : ev.clientY;
+    const from = axis === "x" ? node.getBoundingClientRect().width
+                              : node.getBoundingClientRect().height;
+    S.dragging = true;
+    document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
+    h.classList.add("on");
+
+    const move = e => {
+      const now = axis === "x" ? e.clientX : e.clientY;
+      const v = clampPane(key, from + sign * (now - start));
+      S.pane[key] = v;
+      if (axis === "x") node.style.flexBasis = v + "px"; else node.style.height = v + "px";
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      h.classList.remove("on");
+      S.dragging = false;
+      saveLayout();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
+
+  h.ondblclick = () => { delete S.pane[key]; saveLayout(); render(); };
+  return h;
+}
+
+function colKey() {
+
+  return S.table === "trades" ? "trades" : (viewLane() ? "open1" : "openAll");
+}
+
+function colTemplate(fallback) {
+  const saved = S.cols[colKey()];
+  if (!saved) return fallback;
+  const base = fallback.split(" ");
+  if (saved.length !== base.length) return fallback;
+  return saved.map((w, i) => w == null ? base[i] : w + "px").join(" ");
+}
+
+
+function makeColumnsResizable(headEl, fallback) {
+  const key = colKey();
+  const base = fallback.split(" ");
+  [...headEl.children].forEach((cell, i) => {
+    if (i === base.length - 1) return;
+    cell.style.position = "relative";
+    const grip = el("div", { class: "colgrip", title: "drag to resize · double-click to reset" });
+    grip.onmousedown = ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const startX = ev.clientX;
+      const from = cell.getBoundingClientRect().width;
+      const rows = headEl.parentElement.parentElement;
+      S.dragging = true;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const move = e => {
+        const w = Math.max(COL_MIN, from + (e.clientX - startX));
+        const cur = (S.cols[key] || new Array(base.length).fill(null)).slice();
+        cur[i] = Math.round(w);
+        S.cols[key] = cur;
+        const tpl = cur.map((x, j) => x == null ? base[j] : x + "px").join(" ");
+
+        rows.querySelectorAll(":scope > div > div, :scope > div").forEach(n => {
+          if (n.style && n.style.display === "grid") n.style.gridTemplateColumns = tpl;
+        });
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.style.cursor = ""; document.body.style.userSelect = "";
+        S.dragging = false; saveLayout(); render();
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    };
+    grip.ondblclick = ev => {
+      ev.stopPropagation();
+      const cur = (S.cols[key] || []).slice();
+      cur[i] = null;
+      S.cols[key] = cur.some(x => x != null) ? cur : undefined;
+      if (!S.cols[key]) delete S.cols[key];
+      saveLayout(); render();
+    };
+    cell.append(grip);
+  });
+}
+
+
+function resetLayout() {
+  S.pane = {}; S.cols = {};
+  try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  render();
+}
+function layoutTouched() {
+  return Object.keys(S.pane || {}).length > 0 || Object.keys(S.cols || {}).length > 0;
+}
+
+addEventListener("resize", () => { if (!S.dragging && S.pool) render(); });
+
+function rowPnl(l) {
+
+  const ur = ("unreal" in l) ? l.unreal : unrealOf(l.name), rp = l.realised_pnl;
+  if (known(ur) && known(rp))
+    return { v: rp + ur, text: sgn(rp + ur),
+             why: `total: realised ${sgn(rp)} + open ${sgn(ur)}` };
+  if (known(rp))
+    return { v: rp, text: sgn(rp) + "+?",
+             why: "realised only — some open positions could not be marked, so the "
+                  + "total is unknown" };
+  return { v: null, text: NOVAL, why: "no P&L available for this lane" };
+}
+
+
+function laneRow(l) {
+  const p = posOf(l.name), open = S.openLane === l.name, selected = open;
+  const d1 = (S.pool.pnl_by_lane?.[l.name]?.d1) ?? l.realised_pnl;
+  const head = el("div", {
+    style: "display:flex;align-items:center;gap:12px;padding:10px;cursor:pointer",
+
+    onclick: () => { S.openLane = open ? null : l.name; setFocus(open ? null : l.name); }
+  }, [
+    el("span", { style: `width:7px;height:7px;border-radius:50%;flex:none;background:${l.armed ? "var(--mint)" : "var(--faint)"}` }),
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("div", { style: "display:flex;align-items:center;gap:7px" }, [
+        el("span", { style: "font-family:var(--mono);font-size:12px;font-weight:500" }, l.name),
+        el("span", { style: "font-size:10px;font-weight:500;padding:1px 6px;border-radius:5px;background:#17171d;color:var(--dim)" }, pct(l.pct)),
+        l.halted ? haltChip(l) : "",
+      ]),
+      el("div", { style: "font-size:12px;color:var(--subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" },
+        p.length ? `${p.length} positions · ${p[0].title || ""}` : "no positions yet · awaiting his first signal"),
+    ]),
+    spark(S.equity[l.name]),
+    el("div", { style: "width:76px;flex:none;text-align:right" }, [
+      flashVal(el("div", {
+        style: `font-family:var(--mono);font-size:12.5px;font-weight:500;color:${col(rowPnl(l).v)}`,
+        title: rowPnl(l).why,
+      }, rowPnl(l).text), `row:${l.name}`, rowPnl(l).v),
+      el("div", { style: "font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:2px" }, usd(l.seed_usd, 0)),
+    ]),
+    el("span", { style: `color:var(--faint);font-size:10px;flex:none;transform:rotate(${open ? 90 : 0}deg)` }, "▸"),
+  ]);
+  const row = el("div", {
+    style: `border-radius:9px;margin-bottom:2px;background:${selected ? "var(--raised)" : "transparent"};` +
+           `box-shadow:${selected ? "inset 0 0 0 1px var(--border)" : "none"}`
+  }, [head]);
+  if (open) row.append(laneDetail(l));
+  return row;
+}
+
+function laneDetail(l) {
+
+  const p = posOf(l.name), ur = unrealOf(l.name), rp = l.realised_pnl;
+  const tot = known(ur) && known(rp) ? rp + ur : null;
+  const mv = sumKnown(p, q => known(q.mark) ? q.mark * q.shares : null);
+  const ds = p.map(dragOf).filter(d => d !== null);
+  const avg = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 0;
+  const r = l.risk || {};
+  const lim = (v) => v ? String(v) : "Off";
+  const limC = (v) => v ? "" : "var(--amber)";
+
+  const stop = (kind, label, style) => el("button", {
+    style: `flex:1;font-size:10.5px;font-weight:500;padding:5px 6px;border-radius:7px;cursor:pointer;${style}`,
+    onclick: (e) => { e.stopPropagation(); openGate(l.name, kind); }
+  }, label);
+
+  return el("div", { style: "padding:2px 12px 10px" }, [
+    el("div", { style: "border-top:1px solid var(--line);padding-top:6px" }, [
+      dgroup("P&L breakdown", [
+        dmet("Total P&L", sgn(tot), col(tot)),
+        dmet("↳ realised (ledger)", sgn(rp), col(rp)),
+        dmet("↳ unrealised (open)", sgn(ur), col(ur)),
+        dmet("Return on seed", ratio(tot, l.seed_usd), col(tot)),
+      ]),
+      dgroup("Capital & risk", [
+        dmet("Virtual bankroll", usd(l.virtual_bankroll)),
+        dmet("Deployed cost", usd(l.open_usd)),
+        dmet("Marked value", usd(mv)),
+        dmet("Cap scale", (l.cap_scale ?? 1).toFixed(4) + "×"),
+        dmet("Spent today", `${usd(l.spent_today, 0)} / ${usd(l.daily_budget, 0)}`),
+        dmet("Drawdown / limit", `${(r.drawdown ?? 0).toFixed(2)} / ${lim(0)}`, limC(0)),
+        dmet("Consec. losses / limit", `${r.consecutive_losses ?? 0} / ${lim(0)}`, limC(0)),
+      ]),
+
+      dgroup("The leader", (() => {
+        const lp = l.leader_pnl;
+        if (!lp) return [dmet("Leader P&L", "—", "var(--faint)")];
+        const cell = k => known(lp[k]) ? sgn(lp[k]) : "—";
+        const col2 = k => known(lp[k]) ? col(lp[k]) : "var(--faint)";
+        const cap = (known(lp.d30) && Math.abs(lp.d30) > 1e-9 && known(rp))
+          ? (rp / lp.d30) : null;
+        return [
+          dmet("His P&L · 24h", cell("d1"), col2("d1")),
+          dmet("His P&L · 7d", cell("d7"), col2("d7")),
+          dmet("His P&L · 30d", cell("d30"), col2("d30")),
+          dmet("Our realised", sgn(rp), col(rp)),
+          dmet("Capture vs his 30d", cap === null ? "—" : (cap * 100).toFixed(1) + "%",
+               cap === null ? "var(--faint)" : col(cap)),
+        ];
+      })()),
+      dgroup("Copy quality & health", [
+        dmet("Open positions", p.length),
+        dmet("Avg entry drag", avg.toFixed(2) + "c", avg > 0 ? "var(--rose)" : "var(--mint)"),
+        dmet("Worst entry drag", ds.length ? Math.max(...ds).toFixed(2) + "c" : "—", "var(--rose)"),
+        dmet("Best entry drag", ds.length ? Math.min(...ds).toFixed(2) + "c" : "—", "var(--mint)"),
+        dmet("Price band", `${(l.min_buy_price ?? .02).toFixed(2)} – ${(l.max_buy_price ?? .95).toFixed(2)}`),
+        dmet("Closed trades", r.closed_trades ?? 0),
+      ]),
+      el("div", { style: "padding:9px 0 2px" }, [
+        el("div", { style: "font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px" }, "Stop this wallet"),
+        el("div", { style: "display:flex;gap:6px" }, [
+          stop("graceful", "Graceful", "background:var(--raised);border:1px solid var(--border);color:#c8c8d2"),
+          stop("hybrid", "Hybrid", "background:rgba(242,193,78,.10);border:1px solid rgba(242,193,78,.25);color:var(--amber)"),
+          stop("panic", "Panic", "background:rgba(203,49,49,.12);border:1px solid #2c1d20;color:var(--rose)"),
+        ]),
+        el("div", { style: "font-size:10px;color:var(--faint);margin-top:6px;line-height:1.4" },
+          "Each needs a 15-second wait and a typed phrase. The runtime re-checks every gate."),
+      ]),
+
+
+      el("div", { onclick: e => e.stopPropagation() }, settingsBlock(l)),
+    ]),
+  ]);
+}
+
+const OPEN_COLS_LANE = "56px minmax(0,1fr) 46px 58px 56px 56px 58px 74px 72px";
+const OPEN_COLS_ONE  = "minmax(0,1fr) 46px 58px 56px 56px 58px 74px 72px";
+
+const TRADE_COLS = "minmax(0,1fr) 46px 52px 104px 62px 56px 68px 56px 72px";
+const th = t => el("div", { style: "padding:8px 10px;font-size:10.5px;font-weight:500;color:var(--subtle);white-space:nowrap" }, t);
+const thR = t => el("div", { style: "padding:8px 10px;font-size:10.5px;font-weight:500;color:var(--subtle);white-space:nowrap;text-align:right" }, t);
+const td = (v, a, c) => el("div", {
+  style: `padding:7px 10px;font-family:var(--mono);font-size:11.5px;text-align:${a || "left"};` +
+         `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${c || "var(--ink)"}`
+}, v);
+
+function tableBlock() {
+  const l = viewLane();
+  const p = l ? posOf(l.name) : S.positions;
+
+
+  const showLane = !l;
+  const ds = p.map(dragOf).filter(d => d !== null);
+  const avg = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 0;
+
+  let head, body, sub, meta;
+  if (S.table === "open") {
+    const cols = colTemplate(showLane ? OPEN_COLS_LANE : OPEN_COLS_ONE);
+    head = grid(cols, [...(showLane ? [th("Wallet")] : []), th("Market"), th("Side"), th("Entry"),
+      thR("Our px"), thR("His px"), thR("Drag"), thR("Value"), thR("Unreal.")], true);
+    body = [...p].sort((a, b) => (dragOf(b) ?? -99) - (dragOf(a) ?? -99)).map(q => {
+
+
+      const d = dragOf(q), v = known(q.mark) ? q.mark * q.shares : null,
+            u = known(q.unrealised) ? q.unrealised : null;
+
+      const valCell = flashVal(td(usd(v), "right"), `val:${q.token}`, v);
+      const urCell = flashVal(td(sgn(u), "right", col(u)), `ur:${q.token}`, u);
+      return flashNew(grid(cols, [
+        ...(showLane ? [td(q.lane, "left", "var(--dim)")] : []),
+        td(q.title || "—", "left", "#dcdce4"), td(q.outcome || "", "left", "var(--dim)"),
+        td(when(q.entry_ts).split(",")[0], "left", "var(--faint)"),
+        td(q.our_price?.toFixed(3) ?? "—", "right"),
+        td(q.leader_price?.toFixed(3) ?? "—", "right", "var(--dim)"),
+        td(d === null ? "—" : (d >= 0 ? "+" : "") + d.toFixed(2) + "c", "right",
+           d > .5 ? "var(--rose)" : d < -.5 ? "var(--mint)" : "var(--dim)"),
+        valCell, urCell,
+      ]), `pos:${q.token}`);
+    });
+
+    const nDrag = ds.length, nNoDrag = p.length - nDrag;
+    sub = "what we paid vs what he paid · per-fill drag is in Recent trades";
+    meta = (nDrag ? `mean ${avg >= 0 ? "+" : ""}${avg.toFixed(2)}c over ${nDrag}`
+                  : "drag unknown for every open position")
+           + (nNoDrag ? ` · ${nNoDrag} no leader price` : "")
+           + ` · ${p.length} open${showLane ? " · all wallets" : ` · ${l.name} only`}`;
+  } else {
+    const cols = colTemplate(TRADE_COLS);
+    head = grid(cols, [th("Market"), th("Side"), th("How"), th("When"), thR("Shares"),
+                       thR("Price"), thR("Drag"), thR("Value"), thR("Lane")], true);
+    body = S.trades.map(t => {
+
+      const dc = (t.drag_c === null || t.drag_c === undefined) ? null : Number(t.drag_c);
+      return flashNew(grid(cols, [
+        td(titleOf(t.token), "left", "#dcdce4"),
+        td(t.side === 0 ? "BUY" : "SELL", "left", t.side === 0 ? "var(--indigo-l)" : "var(--mint)"),
+
+        td(t.exec === "maker" ? "GTC" : "FAK", "left",
+           t.exec === "maker" ? "var(--mint)" : "var(--dim)"),
+        td(when(t.t), "left", "var(--faint)"),
+        td((t.shares ?? 0).toFixed(2), "right"), td((t.price ?? 0).toFixed(3), "right"),
+        td(dc === null ? "—" : (dc >= 0 ? "+" : "") + dc.toFixed(2) + "c", "right",
+           dc === null ? "var(--faint)"
+             : dc > 2 ? "var(--rose)" : dc <= 0.5 ? "var(--mint)" : "var(--dim)"),
+        td(usd((t.shares ?? 0) * (t.price ?? 0)), "right"), td(t.lane, "right", "var(--dim)"),
+      ]), `trade:${t.t}:${t.token}:${t.side}:${t.shares}`);
+    });
+
+    const wb = S.trades.filter(t => t.side === 0 && t.drag_c !== null && t.drag_c !== undefined);
+    const wsh = wb.reduce((a, t) => a + (t.shares ?? 0), 0);
+    const wdr = wsh > 0 ? wb.reduce((a, t) => a + (t.shares ?? 0) * Number(t.drag_c), 0) / wsh : null;
+    sub = `what actually executed · newest first${showLane ? " · all wallets" : ` · ${l.name} only`}`;
+    meta = `${S.trades.length} fills` +
+      (wdr === null ? "" : ` · buy drag ${wdr >= 0 ? "+" : ""}${wdr.toFixed(2)}c share-weighted`);
+  }
+
+  makeColumnsResizable(head, S.table === "trades" ? TRADE_COLS
+    : (showLane ? OPEN_COLS_LANE : OPEN_COLS_ONE));
+
+  return el("div", { style: "flex:1;display:flex;flex-direction:column;min-height:0" }, [
+    el("div", { style: "flex:none;display:flex;align-items:center;gap:10px;padding:16px 18px 8px;flex-wrap:wrap" }, [
+      segbar("tblSeg", [["open", "Open"], ["trades", "Recent trades"]], S.table, k => { S.table = k; render(); }),
+
+      l ? el("button", {
+        style: "font-size:10.5px;font-weight:600;padding:2px 6px 2px 8px;border-radius:6px;cursor:pointer;" +
+               "background:rgba(76,130,251,.14);border:1px solid rgba(76,130,251,.3);color:var(--indigo-l);" +
+               "display:inline-flex;align-items:center;gap:6px",
+        title: `showing ${l.name} only — click to show every wallet`,
+        onclick: () => setFocus(null),
+      }, [el("span", { style: "font-family:var(--mono)" }, l.name), el("span", { style: "opacity:.7" }, "only ✕")]) : "",
+      el("span", { class: "hide-sm", style: "font-size:11px;color:var(--faint)" }, sub),
+      el("div", { style: "flex:1" }),
+      el("span", { style: "font-family:var(--mono);font-size:11px;color:var(--faint)" }, meta),
+    ]),
+    el("div", { style: "flex:1;min-height:0;padding:0 18px 16px;display:flex;flex-direction:column" }, [
+
+      (S.table === "open" && (S.src.positions.failing || S.src.positions.partial))
+        ? el("div", {
+            class: "warnbox",
+            style: "margin:0 0 8px;font-size:11px;" + (S.src.positions.failing
+              ? "background:rgba(242,193,78,.12);color:var(--amber)"
+              : "background:rgba(242,193,78,.08);color:var(--amber)"),
+          }, S.src.positions.failing
+              ? `POSITIONS STALE — ${S.src.positions.why}. This list is the last one that \
+loaded${S.src.positions.at ? " (" + new Date(S.src.positions.at).toLocaleTimeString() + ")" : ""} \
+and may no longer be what you hold.`
+              : `POSITIONS INCOMPLETE — ${S.src.positions.why}. Rows and totals below are \
+missing part of the portfolio.`)
+        : "",
+      el("div", { style: "flex:1;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden" }, [
+
+        el("div", { class: "scroll tblscroll" }, [
+          el("div", { class: "tblmin" }, [
+            el("div", { style: "position:sticky;top:0;z-index:2;border-bottom:1px solid var(--line);background:var(--panel2)" }, head),
+            ...(body.length ? body : [el("div", { style: "padding:18px;font-size:11.5px;color:var(--faint)" }, "nothing here yet")]),
+          ]),
+        ]),
+      ]),
+    ]),
+  ]);
+}
+
+function chartBlock() {
+
+
+  const vl = viewLane();
+  const which = vl ? vl.name : "all";
+  const pts = S.equity[which] || [];
+  const ur = S.metric === "total"
+    ? (which === "all"
+        ? sumKnown(S.pool.lanes || [], l => unrealOf(l.name))
+        : unrealOf(which))
+    : 0;
+  const last = pts.length ? pts[pts.length - 1].value : 0;
+
+
+  const shown = known(ur) ? last + ur : null;
+  const svg = chartSVG(pts, ur);
+  const box = el("div", { class: "chartbox", style: "height:124px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;box-sizing:border-box;position:relative" });
+  if (svg) {
+    box.innerHTML = svg;
+    box.append(el("div", { style: "position:absolute;right:12px;top:8px;font-family:var(--mono);font-size:11px" }, [
+      el("span", { style: `color:${col(shown)}` }, sgn(shown)),
+      ur ? el("span", { style: "color:var(--faint)" }, ` · ${sgn(last)} realised`) : "",
+    ]));
+  } else {
+    box.append(el("div", { style: "display:flex;align-items:center;justify-content:center;height:100%;font-size:11.5px;color:var(--faint)" },
+      which === "all" ? "no closed trades yet" : `${which} has not closed a trade yet`));
+  }
+
+
+  const laneOpts = [["all", "All"], ...(S.pool.lanes || []).map(l => [l.name, l.name])];
+  const laneSeg = segbar("laneSeg", laneOpts, vl ? vl.name : "all",
+                         k => setFocus(k === "all" ? null : k));
+  return el("div", { style: "flex:none;padding:14px 18px 0" }, [
+    el("div", { style: "display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap" }, [
+      el("span", { style: "font-size:12px;font-weight:500;white-space:nowrap" }, S.metric === "total" ? "Total P&L" : "Realised P&L"),
+
+      el("span", { class: "hide-sm", style: "font-size:11px;color:var(--faint)" },
+        pts.length ? `${pts.length} closes · lane ledger${ur ? " · dashed = open P&L now" : ""}` : ""),
+      el("div", { style: "flex:1" }),
+      segbar("metricSeg", [["total", "Total"], ["realised", "Realised"]], S.metric, k => { S.metric = k; render(); }),
+      laneSeg,
+    ]),
+    box,
+    dragHandle("chart", "y", 1, () => document.querySelector(".chartbox")),
+  ]);
+}
+
+function tickerStrip() {
+  const rows = S.tickerTrades || [];
+  if (!rows.length) {
+    return el("div", { class: "ticker" }, [
+      el("div", { class: "ticker-empty" }, "no fills recorded yet this session"),
+    ]);
+  }
+  const chip = t => el("span", { class: "tick" }, [
+    el("b", {}, t.lane),
+    el("span", { style: `font-weight:600;color:${t.side === 0 ? "var(--indigo-l)" : "var(--subtle)"}` },
+      t.side === 0 ? "BUY" : "SELL"),
+    el("span", {}, titleOf(t.token)),
+    el("span", { class: "dot" }),
+    el("span", { class: "mono" }, `${(t.shares ?? 0).toFixed(2)} @ ${(t.price ?? 0).toFixed(3)}`),
+    el("span", { style: "color:var(--faint)" }, ago(t.t)),
+  ]);
+
+  const chips = rows.map(chip);
+  return el("div", { class: "ticker" }, [
+    el("div", { class: "ticker-track" }, [...chips, ...chips]),
+  ]);
+}
+
+function median(xs) {
+  if (!xs.length) return 0;
+  const s = xs.slice().sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+function fmtUs(us) {
+  return us < 1000 ? Math.round(us) + "us" : (us / 1000).toFixed(2) + "ms";
+}
+
+function responseTimePanel() {
+  const samples = S.responseTimes || [];
+  const head = (right) => el("div", { style: "display:flex;align-items:baseline;gap:10px;flex-wrap:wrap" }, [
+    el("span", { style: "font-size:12px;font-weight:500;white-space:nowrap" }, "Order response time"),
+    el("span", { class: "hide-sm", style: "font-size:11px;color:var(--faint)" },
+      "signal seen → order ready · the speed this bot controls"),
+    el("div", { style: "flex:1" }),
+    right,
+  ]);
+
+  if (!samples.length) {
+    return el("div", { style: "flex:none;padding:14px 18px;border-top:1px solid var(--line)" }, [
+      head(""),
+      el("div", { style: "font-size:11px;color:var(--faint);margin-top:8px" },
+        "No fires recorded yet this session — this fills in the first time one lands."),
+    ]);
+  }
+
+  const latest = samples[0];
+  const med = median(samples.map(s => s.us));
+
+  const toneOf = us => {
+    const r = med > 0 ? us / med : 1;
+    return r < 0.8 ? "var(--mint)" : r > 1.3 ? "var(--amber)" : "var(--ink)";
+  };
+  const verdictOf = us => {
+    const r = med > 0 ? us / med : 1;
+    return r < 0.8 ? "faster than usual" : r > 1.3 ? "slower than usual" : "typical for this pool";
+  };
+  const key = `rt:${latest.t}:${latest.token}:${latest.side}:${latest.us}`;
+
+  const bars = samples.slice(0, 40).map(s => {
+    const scale = med > 0 ? med : (s.us || 1);
+    const h = Math.max(4, Math.min(38, Math.round((s.us / scale) * 13)));
+    const c = toneOf(s.us);
+    return el("div", {
+      style: `width:7px;height:${h}px;border-radius:2px;background:${c === "var(--ink)" ? "var(--border)" : c};` +
+             "flex:none;cursor:default;transition:opacity .1s",
+      onmouseenter: e => showRtTip(e, s, toneOf(s.us), verdictOf(s.us)),
+      onmousemove: e => moveRtTip(e),
+      onmouseleave: hideRtTip,
+    });
+  }).reverse();
+
+  return el("div", { style: "flex:none;padding:14px 18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px" }, [
+    head(el("span", { style: "font-size:11px;color:var(--faint)" },
+      `${samples.length} recorded this session`)),
+    el("div", {}, [
+      flashNew(el("div", { style: `font-family:var(--mono);font-size:26px;font-weight:600;color:${toneOf(latest.us)}` },
+        fmtUs(latest.us)), key),
+      el("div", { style: "font-size:10.5px;color:var(--faint);margin-top:2px" },
+        `${latest.lane} · ${titleOf(latest.token)} · ${ago(latest.t)}`),
+    ]),
+    el("div", { style: "display:flex;align-items:flex-end;gap:3px;height:38px" }, bars),
+  ]);
+}
+
+function rtTipEl() {
+  let t = document.getElementById("rtTip");
+  if (!t) { t = el("div", { id: "rtTip" }); document.body.appendChild(t); }
+  return t;
+}
+function showRtTip(ev, s, tone, verdict) {
+  const t = rtTipEl();
+  t.innerHTML = "";
+  t.append(
+    el("div", { class: "n", style: `color:${tone}` }, fmtUs(s.us)),
+    el("div", { class: "w" }, [
+      el("b", { style: "color:var(--ink);font-family:var(--mono)" }, s.lane), " · ",
+      el("span", { style: `font-weight:600;color:${s.side === 0 ? "var(--indigo-l)" : "var(--subtle)"}` },
+        s.side === 0 ? "BUY" : "SELL"),
+    ]),
+    el("div", { class: "m" }, titleOf(s.token)),
+    el("div", { class: "a" }, `${verdict} · ${ago(s.t)}`),
+  );
+  t.style.display = "block";
+  moveRtTip(ev);
+}
+function moveRtTip(ev) {
+  const t = document.getElementById("rtTip");
+  if (!t) return;
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+
+  const w = t.offsetWidth || 220, h = t.offsetHeight || 70;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - pad;
+  t.style.left = x + "px";
+  t.style.top = y + "px";
+}
+function hideRtTip() {
+  const t = document.getElementById("rtTip");
+  if (t) t.style.display = "none";
+}
+
+function settingsBlock(l) {
+  const p = posOf(l.name);
+  const mv = sumKnown(p, q => known(q.mark) ? q.mark * q.shares : null);
+  const dep = (l.open_usd / (l.seed_usd || 1)) * 100;
+  const r = l.risk || {};
+  const pend = S.edits[l.name] || {};
+  const cur = (k, d) => pend[k] !== undefined ? pend[k] : d;
+
+  const edit = (key, value, fmtFn, parse) => {
+    const span = el("span", {
+      class: "ed",
+      contenteditable: S.locked ? "false" : "true",
+      style: "font-family:var(--mono);font-size:12px;padding:3px 8px;border-radius:6px;" +
+             `background:#0e0e12;border:1px solid ${S.locked ? "var(--border)" : "#3a3a46"};` +
+             "color:var(--ink);outline:none;min-width:64px;display:inline-block;text-align:right",
+      onblur: e => {
+        const v = parse(e.target.textContent);
+        if (v === null || Number.isNaN(v)) { e.target.textContent = fmtFn(value); return; }
+        S.edits[l.name] = { ...(S.edits[l.name] || {}), [key]: v };
+        e.target.textContent = fmtFn(v);
+        renderRailFooter();
+      },
+    }, fmtFn(cur(key, value)));
+    return span;
+  };
+
+
+  const toggle = (key, value) => {
+    const on = cur(key, value);
+    return el("button", {
+      style: "width:38px;height:21px;border-radius:11px;padding:0;cursor:" +
+        (S.locked ? "default" : "pointer") + ";border:1px solid " +
+        (on ? "var(--mint)" : "var(--border)") + ";background:" +
+        (on ? "rgba(61,180,104,.22)" : "#0e0e12") + ";position:relative;display:block",
+      onclick: () => { if (S.locked) return;
+        S.edits[l.name] = { ...(S.edits[l.name] || {}), [key]: !on }; render(); },
+    }, el("span", { style: "position:absolute;top:2px;left:" + (on ? "19px" : "2px") +
+        ";width:15px;height:15px;border-radius:50%;background:" +
+        (on ? "var(--mint)" : "#4a4a56") + ";transition:left .12s" }));
+  };
+
+  const row = (label, node, sub) => el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:6px 0;gap:10px" }, [
+    el("div", {}, [el("span", { style: "font-size:12px;color:var(--subtle)" }, label),
+      sub ? el("div", { style: "font-size:10.5px;color:var(--faint);margin-top:2px" }, sub) : ""]),
+    node,
+  ]);
+  const ro = v => el("span", { style: "font-family:var(--mono);font-size:12px" }, v);
+
+  const lo = l.min_buy_price ?? .02, hi = l.max_buy_price ?? .95;
+  const bandBar = el("div", { style: "padding:6px 0 2px" }, [
+    el("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:6px" }, [
+      el("span", { style: "font-size:12px;color:var(--subtle)" }, "Price band"),
+      el("span", { style: "display:flex;gap:4px;align-items:center" }, [
+        edit("min_buy_price", lo, v => v.toFixed(2), t => { const v = parseFloat(t); return v >= 0 && v <= 1 ? v : null; }),
+        el("span", { style: "color:var(--faint);font-size:11px" }, "–"),
+        edit("max_buy_price", hi, v => v.toFixed(2), t => { const v = parseFloat(t); return v >= 0 && v <= 1 ? v : null; }),
+      ]),
+    ]),
+    el("div", { style: "position:relative;height:6px;border-radius:3px;background:#17171d;overflow:hidden" },
+      el("div", { style: `position:absolute;left:${cur("min_buy_price", lo) * 100}%;width:${(cur("max_buy_price", hi) - cur("min_buy_price", lo)) * 100}%;top:0;height:6px;background:var(--indigo)` })),
+    el("div", { style: "display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:4px" },
+      [el("span", {}, "0c"), el("span", {}, "50c"), el("span", {}, "100c")]),
+  ]);
+
+  const riskRow = (label, curV, limit) => el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:5.5px 0" }, [
+    el("span", { style: "font-size:12px;color:var(--subtle)" }, label),
+    el("span", { style: "font-family:var(--mono);font-size:12px" }, [
+      el("span", {}, String(curV)), el("span", { style: "color:var(--faint)" }, " / "),
+      el("span", { style: `color:${limit ? "var(--dim)" : "var(--amber)"}` }, limit ? String(limit) : "Off"),
+    ]),
+  ]);
+
+  const unlock = unlockBuckets(p, mv);
+
+  return el("div", { style: "border:1px solid var(--border);border-radius:9px;background:#0c0c10;margin-top:8px;overflow:hidden" }, [
+    el("div", { style: "display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)" }, [
+      el("span", { style: "font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)" }, "Settings"),
+      el("span", { style: `font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;` +
+        (S.locked ? "background:#17171d;color:var(--dim)" : "background:rgba(242,193,78,.14);color:var(--amber)") },
+        S.locked ? "LOCKED" : "EDITING"),
+      el("div", { style: "flex:1" }),
+      el("button", { style: "font-size:11px;font-weight:500;padding:3px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer",
+        onclick: e => { e.stopPropagation(); S.locked = !S.locked; render(); } }, S.locked ? "Unlock" : "Lock"),
+    ]),
+    el("div", {}, [
+      armBlock(l),
+      el("div", { style: "padding:12px 16px 14px;border-bottom:1px solid var(--line)" }, [
+        row("Virtual budget", edit("seed_usd", l.seed_usd, v => usd(v, 0), t => { const v = parseFloat(String(t).replace(/[$,]/g, "")); return v > 0 ? v : null; })),
+        el("div", { style: "display:flex;justify-content:space-between;font-size:11.5px;color:var(--subtle);margin:8px 0 6px" },
+          [el("span", {}, "Deployed"), el("span", { style: "color:var(--ink)" }, `${usd(l.open_usd)} · ${dep.toFixed(1)}%`)]),
+        el("div", { style: "height:6px;border-radius:3px;background:#17171d;overflow:hidden" },
+          el("div", { style: `height:6px;background:var(--mint);width:${Math.min(dep, 100).toFixed(1)}%` })),
+      ]),
+      el("div", { style: "padding:8px 16px 12px;border-bottom:1px solid var(--line)" }, [
+        row("Copy rate", edit("pct", l.pct, v => (v * 100).toFixed(2) + "%", t => { const v = parseFloat(t) / 100; return v > 0 && v <= 1 ? v : null; }), "of his fill size"),
+        row("Compound", toggle("compound", l.compound !== false),
+            l.compound !== false
+              ? `on — profit moves the rate; now ${((l.effective_pct ?? l.pct) * 100).toFixed(2)}%, capped ${((l.max_effective_pct ?? .05) * 100).toFixed(1)}%`
+              : `off — pinned at ${(l.pct * 100).toFixed(2)}% whatever it earns`),
+        row("Daily budget", ro(`${usd(l.spent_today, 0)} / ${usd(l.daily_budget, 0)}`)),
+        row("Stop mode", ro(l.stop_mode || "none")),
+        bandBar,
+      ]),
+      el("div", { style: "padding:10px 16px 12px;border-bottom:1px solid var(--line)" }, [
+        row("Leader wallet", el("a", { href: `https://polymarket.com/profile/${l.leader}`, target: "_blank", rel: "noreferrer", style: "font-family:var(--mono);font-size:12px" },
+          `${l.leader.slice(0, 6)}…${l.leader.slice(-4)} ↗`)),
+        el("div", { style: "font-size:10.5px;color:var(--faint)" }, "opens his Polymarket profile"),
+      ]),
+      el("div", { style: "padding:12px 16px 14px;border-bottom:1px solid var(--line)" }, [
+        el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px" }, [
+          el("span", { style: "font-size:12px;font-weight:500" }, "Stop loss"),
+          el("div", { style: "flex:1" }),
+          el("span", { style: "font-family:var(--mono);font-size:10px;color:var(--faint)" }, "now / limit"),
+        ]),
+        riskRow("Drawdown", (r.drawdown ?? 0).toFixed(2), 0),
+        riskRow("Consecutive losses", r.consecutive_losses ?? 0, 0),
+        riskRow("Open positions", r.open_positions ?? 0, 0),
+        riskRow("Closed trades", r.closed_trades ?? 0, 0),
+        el("div", { style: "margin-top:9px;background:rgba(242,193,78,.10);border:1px solid rgba(242,193,78,.22);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--amber);line-height:1.45" },
+          "Every breaker is OFF. Nothing will halt this lane on a losing run — only the guardian and a manual stop."),
+      ]),
+      el("div", { style: "padding:12px 16px 8px;display:flex;align-items:baseline;justify-content:space-between" }, [
+        el("span", { style: "font-size:12px;font-weight:500" }, "Capital unlock"),
+        el("span", { style: "font-size:11px;color:var(--faint)" }, "when it frees up"),
+      ]),
+      el("div", { style: "padding:0 16px 14px" }, unlock),
+    ]),
+    el("div", { id: "railFoot", style: "border-top:1px solid var(--line)" }),
+  ]);
+}
+
+function unlockBuckets(p, marked) {
+  const now = Date.now();
+  const B = [
+    ["Redeemable now", "var(--mint)"],
+    ["Overdue",        "var(--amber)"],
+    ["\u2264 7 days",     "var(--indigo)"],
+    ["\u2264 30 days",    "var(--indigo)"],
+    ["Later",          "#2f2f3a"],
+    ["No date",        "#2f2f3a"],
+  ];
+  const acc = {}; B.forEach(([k]) => acc[k] = [0, 0]);
+
+  let unpriced = 0;
+  p.forEach(q => {
+    const v = known(q.mark) ? q.mark * q.shares : (unpriced++, 0);
+    let k;
+    if (q.redeemable) k = "Redeemable now";
+    else if (!q.end_date) k = "No date";
+    else {
+      const d = (new Date(q.end_date).getTime() - now) / 86400000;
+      k = d <= 0 ? "Overdue" : d <= 7 ? "\u2264 7 days" : d <= 30 ? "\u2264 30 days" : "Later";
+    }
+    acc[k][0] += v; acc[k][1]++;
+  });
+
+  const priced = B.reduce((a, [k]) => a + acc[k][0], 0);
+  const denom = Math.max(known(marked) ? marked : priced, 1);
+  const rows = B.filter(([k]) => acc[k][1] > 0).map(([k, c]) => el("div", { style: "margin-bottom:11px" }, [
+    el("div", { style: "display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px" }, [
+      el("span", { style: `font-size:11.5px;color:${k === "Redeemable now" ? "var(--mint)" : k === "Overdue" ? "var(--amber)" : "var(--subtle)"}` }, k),
+      el("span", { style: "font-family:var(--mono);font-size:12px" }, `${usd(acc[k][0])} \u00b7 ${acc[k][1]}`),
+    ]),
+    el("div", { style: "height:4px;border-radius:2px;background:#17171d;overflow:hidden" },
+      el("div", { style: `height:4px;background:${c};width:${(acc[k][0] / denom * 100).toFixed(1)}%` })),
+  ]));
+  if (!rows.length) return [el("div", { style: "font-size:11px;color:var(--faint)" }, "No open positions.")];
+  const free = acc["Redeemable now"][0];
+  if (free > 0) rows.push(el("div", { style: "font-size:10.5px;color:var(--mint);line-height:1.45;margin-top:-2px" },
+    `${usd(free)} has already resolved and is waiting to be redeemed.`));
+  const nodate = acc["No date"][1];
+  if (nodate) rows.push(el("div", { style: "font-size:10.5px;color:var(--faint);line-height:1.45" },
+    `${nodate} position${nodate > 1 ? "s carry" : " carries"} no end date from the venue.`));
+  if (unpriced) rows.push(el("div", { style: "font-size:10.5px;color:var(--amber);line-height:1.45" },
+    `${unpriced} position${unpriced > 1 ? "s have" : " has"} no mark from the venue, so the \
+values above are UNDERSTATED by whatever ${unpriced > 1 ? "they are" : "it is"} worth.`));
+  return rows;
+}
+
+function renderRailFooter() {
+  const foot = document.getElementById("railFoot"); if (!foot) return;
+  const l = viewLane(); const pend = S.edits[l?.name] || {};
+  if (!l) return;
+  const keys = Object.keys(pend);
+  foot.innerHTML = "";
+  if (!keys.length) {
+    foot.append(el("div", { style: "padding:10px 16px 12px;display:flex;justify-content:space-between;align-items:baseline" }, [
+      el("span", { style: "font-size:11.5px;color:var(--subtle)" }, "Headroom"),
+      el("span", { style: `font-family:var(--mono);font-size:13px;color:${col(S.pool.headroom)}` }, sgn(S.pool.headroom)),
+    ]));
+    return;
+  }
+  foot.append(el("div", { style: "padding:10px 16px 12px" }, [
+    el("div", { style: "font-size:11px;color:var(--amber);margin-bottom:7px" },
+      `${keys.length} unsaved change${keys.length > 1 ? "s" : ""} · ${keys.join(", ")}`),
+    el("div", { style: "display:flex;gap:6px" }, [
+      el("button", {
+        style: "flex:1;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:var(--indigo);border:1px solid var(--indigo-l);color:#fff;cursor:pointer",
+
+        onclick: () => commit({ method: "POST", url: "/api/wallets", body: { name: l.name, ...pend } })
+          .then(res => {
+            if (res.ok) { S.edits[l.name] = {}; toast("Saved", l.name); }
+            else { toast("NOT saved — your edit is still here",
+                         res.error || "the runtime refused it"); }
+            render();
+          })
+      }, READ_ONLY ? "Save (read-only)" : "Save"),
+      el("button", {
+        style: "font-size:11px;padding:6px 10px;border-radius:7px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer",
+        onclick: () => { S.edits[l.name] = {}; render(); }
+      }, "Discard"),
+    ]),
+  ]));
+}
+
+
+const GATE_COPY = {
+  graceful: { soft: true, text: "This will sell every position exactly as the current wallet sells it. This will take time. It is the least destructive way to exit your position." },
+  hybrid: { soft: false, text: "This will sell profitable positions now, then exit the unprofitable ones as the wallet does. This will take time." },
+  panic: { soft: false, text: "This will sell every position instantly, causing a loss of funds. This is a drastic measure only intended for emergencies and is not recommended." },
+};
+function openGate(laneName, mode) {
+  const c = GATE_COPY[mode], phrase = `${mode} ${laneName}`, isHybrid = mode === "hybrid";
+  const host = document.getElementById("modal");
+  let left = 15, tick = null;
+  const confirmBtn = el("button", { disabled: true, style: "font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;border:1px solid;opacity:.5" });
+  const stage = el("div");
+  const ack = isHybrid ? el("input", { type: "checkbox" }) : null;
+  const close = () => { clearInterval(tick); host.innerHTML = ""; };
+  const setBtn = () => {
+    const inp = stage.querySelector("input[type=text]");
+    const okPhrase = inp && inp.value === phrase;
+    const okAck = !isHybrid || (ack && ack.checked);
+    confirmBtn.disabled = !(okPhrase && okAck);
+    confirmBtn.style.opacity = confirmBtn.disabled ? ".5" : "1";
+  };
+  confirmBtn.textContent = `Confirm in ${left}s`;
+  confirmBtn.style.background = c.soft ? "var(--indigo)" : "rgba(203,49,49,.18)";
+  confirmBtn.style.borderColor = c.soft ? "var(--indigo-l)" : "#2c1d20";
+  confirmBtn.style.color = c.soft ? "#fff" : "#ffd9d9";
+  tick = setInterval(() => {
+    if (--left > 0) { confirmBtn.textContent = `Confirm in ${left}s`; return; }
+    clearInterval(tick);
+    confirmBtn.textContent = "Confirm";
+    stage.innerHTML = "";
+    stage.append(
+      el("div", { style: "font-size:11.5px;color:var(--faint);margin:2px 0 7px" }, [
+        "Type ", el("b", { style: "font-family:var(--mono);color:var(--ink)" }, phrase), " to confirm."]),
+      el("input", { type: "text", autocomplete: "off", spellcheck: "false", oninput: setBtn }));
+    stage.querySelector("input").focus();
+    setBtn();
+  }, 1000);
+
+  confirmBtn.onclick = () => {
+    const body = { lane: laneName, mode, phrase, ts: Math.floor(Date.now() / 1000) };
+    if (isHybrid) body.acknowledge_forfeit = true;
+
+    commit({ method: "POST", url: "/api/flatten", body }).then(res => {
+      stage.innerHTML = "";
+      if (!res.ok) {
+        stage.append(el("div", { class: "warnbox", style: "margin:0" },
+          `NOT queued — ${res.error || "the runtime refused it"}. Nothing has been sold.`));
+        confirmBtn.textContent = "Close"; confirmBtn.disabled = false;
+        confirmBtn.onclick = close;
+        return;
+      }
+      stage.append(el("div", { class: "warnbox", style: "background:rgba(61,180,104,.10);color:#c7e8bd;margin:0" },
+        res.readOnly ? "Read-only — the runtime was not asked to do anything." : "Queued. The runtime is gating and executing it."));
+      confirmBtn.textContent = "Done"; confirmBtn.disabled = true;
+      setTimeout(close, 1800);
+    });
+  };
+
+  host.innerHTML = "";
+  host.append(el("div", { class: "overlay", onclick: e => { if (e.target.className === "overlay") close(); } }, [
+    el("div", { class: "modal" }, [
+      el("h3", {}, `${mode[0].toUpperCase() + mode.slice(1)} exit — ${laneName}`),
+      el("p", { style: "color:var(--subtle);margin:0 0 16px;font-size:12.5px" }, `This affects only the ${laneName} wallet.`),
+      el("div", { class: "warnbox", style: c.soft ? "background:rgba(61,180,104,.10);color:#c7e8bd" : "background:rgba(203,49,49,.12);color:#ffb4ae" }, c.text),
+      isHybrid ? el("label", { style: "display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;font-size:12px" },
+        [ack, el("span", {}, "I understand selling winners early forfeits the upside they would have grown into.")]) : "",
+      stage,
+      READ_ONLY ? el("div", { style: "font-size:10.5px;color:var(--faint);margin:10px 0 0" },
+        "Read-only build — the gate runs in full, but nothing is sent.") : "",
+      el("div", { style: "display:flex;gap:10px;justify-content:flex-end;margin-top:16px" }, [
+        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer", onclick: close }, "Cancel"),
+        confirmBtn,
+      ]),
+    ]),
+  ]));
+  if (ack) ack.onchange = setBtn;
+}
+
+const ARM_STATES = [
+  { id: "armed",     label: "Armed",     c: "var(--mint)",
+    sub: "Copies his buys and his sells." },
+  { id: "halt_buys", label: "Halt buys", c: "var(--amber)",
+    sub: "Stops opening. STILL follows him out of everything held." },
+  { id: "off",       label: "Off",       c: "var(--faint)",
+    sub: "Fully disarmed. Positions are HELD, not sold." },
+];
+
+function armState(l) {
+  if (l.halt_latch) return "breaker";
+  if (!l.armed) return "off";
+
+  if (l.ready === false) return "activating";
+  return l.halted ? "halt_buys" : "armed";
+}
+
+function armBlock(l) {
+  const now = armState(l);
+  const latched = now === "breaker";
+
+  const activating = now === "activating";
+  const sel = activating ? "armed" : now;
+
+  const seg = ARM_STATES.map(s => {
+    const on = latched ? s.id === "halt_buys" : s.id === sel;
+    return el("button", {
+      disabled: latched,
+      style: "flex:1;font-size:11px;font-weight:600;padding:6px 4px;border-radius:7px;cursor:" +
+        (latched ? "not-allowed" : "pointer") + ";border:1px solid " +
+        (on ? s.c : "var(--border)") + ";background:" +
+        (on ? `color-mix(in oklab, ${s.c} 16%, transparent)` : "var(--raised)") +
+        ";color:" + (on ? s.c : "#9a9aa6") + (latched && !on ? ";opacity:.4" : ""),
+      onclick: () => s.id === sel ? null : setArm(l.name, s.id),
+    }, s.label);
+  });
+
+  const note = latched
+    ? "A breaker has TRIPPED and latched. It does not clear from here — read the halt " +
+      "reason on the box and restart the runtime once the cause is fixed."
+    : activating
+      ? "ARMED BUT NOT ACTIVATED — this wallet is trading NOTHING right now, and that " +
+        "includes SELLING: it cannot follow its leader out of anything it holds. " +
+        "Activation retries on its own; if it persists, check the leader-book fetch on " +
+        "the box." + (l.boot_fault ? " Boot fault: " + l.boot_fault : "")
+      : (ARM_STATES.find(s => s.id === now) || {}).sub;
+
+  return el("div", { style: "padding:12px 16px 13px;border-bottom:1px solid var(--line)" }, [
+    el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px" }, [
+      el("span", { style: "font-size:12px;font-weight:500" }, "Arming"),
+      el("div", { style: "flex:1" }),
+      latched ? el("span", { style: "font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;background:rgba(203,49,49,.16);color:#ff9d95" }, "BREAKER") : "",
+    ]),
+    el("div", { style: "display:flex;gap:5px" }, seg),
+    el("div", { style: `font-size:10.5px;line-height:1.45;margin-top:7px;color:${latched ? "#ff9d95" : "var(--faint)"}` }, note),
+  ]);
+}
+
+
+function setArm(lane, state) {
+
+  const send = extra => commit({ method: "POST", url: "/api/arm",
+                                 body: { lane, state, ...extra } })
+    .then(res => {
+      if (!res.ok) {
+        toast(`NOT ${state === "off" ? "disarmed" : "armed"} — ${lane}`,
+              res.error || "the runtime refused it");
+      }
+      setTimeout(load, 400);
+      return res;
+    });
+  if (state !== "armed") return send({});
+
+  const phrase = `arm ${lane}`;
+  const host = document.getElementById("modal");
+  const close = () => { host.innerHTML = ""; };
+  const go = el("button", { disabled: true, style: "font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;background:var(--indigo);border:1px solid var(--indigo-l);color:#fff;opacity:.5" }, "Arm");
+  const inp = el("input", { type: "text", autocomplete: "off", spellcheck: "false",
+    oninput: e => { go.disabled = e.target.value !== phrase; go.style.opacity = go.disabled ? ".5" : "1"; } });
+  go.onclick = () => { send({ phrase }); close(); };
+
+  host.innerHTML = "";
+  host.append(el("div", { class: "overlay", onclick: e => { if (e.target.className === "overlay") close(); } }, [
+    el("div", { class: "modal" }, [
+      el("h3", {}, `Arm ${lane}`),
+      el("p", { style: "color:var(--subtle);margin:0 0 14px;font-size:12.5px" },
+        "This puts real money back to work — the lane will start mirroring his buys again."),
+      el("div", { style: "font-size:11.5px;color:var(--faint);margin:2px 0 7px" },
+        ["Type ", el("b", { style: "font-family:var(--mono);color:var(--ink)" }, phrase), " to confirm."]),
+      inp,
+      READ_ONLY ? el("div", { style: "font-size:10.5px;color:var(--faint);margin:10px 0 0" },
+        "Read-only build — the gate runs in full, but nothing is sent.") : "",
+      el("div", { style: "display:flex;gap:10px;justify-content:flex-end;margin-top:16px" }, [
+        el("button", { style: "font-size:12px;padding:8px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--border);color:#c8c8d2;cursor:pointer", onclick: close }, "Cancel"),
+        go,
+      ]),
+    ]),
+  ]));
+  inp.focus();
+}
+
+function healthRail() {
+  const lanes = S.pool.lanes || [];
+  const errs = S.errors || [];
+  const by = {};
+  (S.errorsByLane || []).forEach(x => by[x.lane] = x);
+
+  return el("div", { class: "rail" }, [
+    el("div", { style: "flex:none;display:flex;align-items:center;gap:8px;padding:13px 16px 10px;border-bottom:1px solid var(--line)" }, [
+      el("span", { style: "font-size:12px;font-weight:500" }, "Health"),
+      poolVerdict(lanes, errs),
+      el("div", { style: "flex:1" }),
+
+
+      layoutTouched() ? el("span", {
+        style: "font-size:10.5px;color:var(--faint);cursor:pointer;text-decoration:underline;text-underline-offset:2px",
+        onclick: resetLayout,
+      }, "reset layout") : el("span", { style: "font-size:10.5px;color:var(--faint)" }, "whole pool"),
+    ]),
+    el("div", { class: "scroll railbody", style: "flex:1" }, [
+      el("div", { style: "padding:10px 16px 12px;border-bottom:1px solid var(--line)" },
+        lanes.map(x => laneHealth(x, by[x.name]))),
+      el("div", {}, [
+      el("div", { style: "padding:11px 16px 6px;display:flex;align-items:baseline;justify-content:space-between" }, [
+        el("span", { style: "font-size:12px;font-weight:500" }, "What happened"),
+        el("span", { style: "font-size:10.5px;color:var(--faint)" },
+          errs.length ? `${errs.length} recent` : "nothing logged"),
+      ]),
+      el("div", { style: "padding:0 12px 14px" }, errorFeed(errs)),
+      ]),
+    ]),
+  ]);
+}
+
+
+function laneHealth(l, counts) {
+  const st = armState(l);
+
+
+  const C = { armed: ["var(--mint)", "Trading"], halt_buys: ["var(--amber)", "Exits only"],
+              off: ["var(--faint)", "Off"], breaker: ["#ff9d95", "Stopped"],
+              activating: ["var(--amber)", "Activating — not trading"] }[st]
+            || ["var(--faint)", st];
+  const stops = counts?.stops || 0, warns = counts?.warns || 0;
+  const drift = (S.drift || {})[l.name];
+
+  return el("div", { style: "padding:7px 0;border-bottom:1px solid #131318" }, [
+    el("div", { style: "display:flex;align-items:center;gap:8px" }, [
+      el("span", { style: `width:6px;height:6px;border-radius:50%;flex:none;background:${C[0]}` }),
+      el("span", { style: "font-family:var(--mono);font-size:12px;flex:1" }, l.name),
+      el("span", { style: `font-size:10.5px;font-weight:600;color:${C[0]}` }, C[1]),
+    ]),
+    el("div", { style: "display:flex;gap:14px;margin:5px 0 0 14px;font-size:10.5px;color:var(--faint)" }, [
+
+      el("span", {}, [
+        "drift ",
+        el("span", { style: `font-family:var(--mono);color:${drift > DRIFT_BOUND ? "var(--rose)" : drift ? "var(--amber)" : "var(--dim)"}` },
+          drift === undefined ? "—" : `${drift.toFixed(4)}/${DRIFT_BOUND.toFixed(2)} sh`),
+      ]),
+      stops ? el("span", { style: "color:var(--rose)" }, `${stops} stop${stops > 1 ? "s" : ""}`) : "",
+      warns ? el("span", { style: "color:var(--amber)" }, `${warns} warning${warns > 1 ? "s" : ""}`) : "",
+      !stops && !warns ? el("span", { style: "color:var(--dim)" }, "no faults") : "",
+    ]),
+  ]);
+}
+
+const DRIFT_BOUND = 1.0;
+
+function poolVerdict(lanes, errs) {
+
+  const st = healthState();
+  const [c, t] = st === "stopped" ? ["#ff9d95", "STOPPED"]
+    : st === "warn" ? ["var(--amber)", S.authExpired ? "SIGNED OUT"
+                                        : S.connDown ? "UNREACHABLE" : "RECOVERED"]
+    : st === "live" ? ["var(--mint)", "HEALTHY"]
+    : ["var(--faint)", "IDLE"];
+  return el("span", { style: `font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;color:${c};background:${c === "var(--faint)" ? "#17171d" : `color-mix(in oklab, ${c} 16%, transparent)`}` }, t);
+}
+
+function errorFeed(errs) {
+  if (!errs.length) {
+    return [el("div", { style: "font-size:11.5px;color:var(--faint);line-height:1.5;padding:0 4px" },
+      "No faults recorded. This fills in when the guardian or the reconciler notices something — each entry says in plain English what happened and whether it needs you.")];
+  }
+  const SEV = { stop: ["var(--rose)", "rgba(203,49,49,.10)", "Trading stopped"],
+                warn: ["var(--amber)", "rgba(242,193,78,.08)", "Warning"],
+                notice: ["var(--dim)", "transparent", "Noticed"] };
+  return errs.slice(0, 40).map(e => {
+    const s = SEV[e.severity] || SEV.notice;
+    return el("div", { style: `border-left:2px solid ${s[0]};background:${s[1]};border-radius:0 7px 7px 0;padding:7px 10px;margin-bottom:5px` }, [
+      el("div", { style: "display:flex;align-items:baseline;gap:7px;margin-bottom:3px" }, [
+        el("span", { style: `font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:${s[0]}` }, s[2]),
+        e.lane ? el("span", { style: "font-family:var(--mono);font-size:10px;color:var(--faint)" }, e.lane) : "",
+        el("div", { style: "flex:1" }),
+        el("span", { style: "font-family:var(--mono);font-size:9.5px;color:var(--faint)" }, ago(e.t)),
+      ]),
+
+
+      el("div", { style: "font-size:11.5px;color:#c8c8d2;line-height:1.45" }, e.human || e.detail),
+      e.human && e.detail && e.human !== e.detail
+        ? el("div", { style: "font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:4px;word-break:break-all" }, e.detail)
+        : "",
+    ]);
+  });
+}
+
+function ago(t) {
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - (t || 0)));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+function connectingScreen() {
+  const app = $("#app");
+  app.className = "";
+  app.innerHTML = "";
+  app.append(el("div", {
+    style: "flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px",
+  }, [
+    el("div", { class: "spinner" }),
+    el("div", { style: "font-size:13px;color:var(--dim)" }, "Waiting for the bot…"),
+    el("div", { style: "font-size:11.5px;color:var(--faint);max-width:320px;text-align:center;line-height:1.5" },
+      "The dashboard loads independently of the trading process — this screen means the PAGE is fine and the BOT is still starting, restarting, or between deploys. It will connect on its own, usually within a few seconds."),
+  ]));
+}
+
+function connBanner() {
+  if (!S.connDown && !S.authExpired) return "";
+  const secs = S.lastGoodAt ? Math.round((Date.now() - S.lastGoodAt) / 1000) : null;
+  const age = secs === null ? "" : (secs < 5 ? "just now"
+              : secs < 90 ? secs + "s ago" : Math.round(secs / 60) + " min ago");
+
+  const auth = S.authExpired;
+  const kids = [
+    el("span", { style: "width:6px;height:6px;border-radius:50%;flex:none;background:var(--amber)" }),
+    el("span", {}, auth
+      ? `Signed out — your Cloudflare Access session expired${age ? `; showing data from ${age}` : ""}. The bot is unaffected and still trading.`
+      : secs === null ? "Reconnecting to the bot…"
+      : `Bot unreachable — showing data from ${age}. Retrying…`),
+  ];
+  if (auth) {
+    kids.push(el("button", {
+      style: "margin-left:auto;font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:6px;" +
+             "cursor:pointer;background:var(--amber);color:#17171d;border:none",
+      onclick: () => location.reload(),
+    }, "Sign in again"));
+  }
+  return el("div", {
+    style: "flex:none;background:rgba(242,193,78,.12);border-bottom:1px solid rgba(242,193,78,.25);" +
+           "color:var(--amber);font-size:11.5px;padding:6px 16px;display:flex;align-items:center;gap:8px",
+  }, kids);
+}
+
+let repaintPending = false;
+function editingNow() {
+  const a = document.activeElement;
+  return !!a && (a.isContentEditable || a.tagName === "INPUT" || a.tagName === "TEXTAREA");
+}
+function safeRender() {
+  if (editingNow()) { repaintPending = true; return; }
+  render();
+}
+document.addEventListener("focusout", () => {
+  if (!repaintPending) return;
+  repaintPending = false;
+  setTimeout(() => { if (!editingNow()) render(); }, 0);
+});
+
+function blindAudit() {
+  let newest = null;
+  for (const e of (S.errors || [])) {
+    if (!/^advisory(_cleared)?:watcher_feed/.test(String(e.kind || ""))) continue;
+    if (!newest || (e.t || 0) >= (newest.t || 0)) newest = e;
+  }
+  return newest && String(newest.kind).startsWith("advisory:") ? newest : null;
+}
+
+function blindBanner() {
+  const e = blindAudit();
+  if (!e) return "";
+  const mins = Math.max(0, Math.round((Date.now() / 1000 - (e.t || 0)) / 60));
+  return el("div", { class: "blindbar" }, [
+    el("div", { class: "dot" }),
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("h4", {}, "Copy audit is blind — trading is NOT stopped"),
+
+
+      el("p", {}, "The watcher cannot see " + (e.lane ? e.lane + "'s" : "leader") +
+        " fills, so nothing is checking that we copied correctly. Buys and exits both " +
+        "continue. A missed copy would go unnoticed until this clears."),
+      el("p", { style: "margin-top:5px;opacity:.75;font-family:var(--mono);font-size:11px" },
+        String(e.detail || "").slice(0, 180)),
+    ]),
+    el("div", { class: "age" }, mins < 1 ? "just now" : mins + " min"),
+  ]);
+}
+
+function render() {
+  if (!S.pool) { connectingScreen(); return; }
+  const app = $("#app");
+  app.className = S.locked ? "locked" : "";
+  const l = viewLane();
+  const P = poolView();
+  const p = l ? posOf(l.name) : S.positions;
+  const ur = l ? unrealOf(l.name) : P.unreal;
+
+  app.innerHTML = "";
+
+  app.append(tickerStrip());
+
+
+  const blind = blindBanner();
+  if (blind) app.append(blind);
+
+  const roster = el("div", { class: "roster" }, [
+    el("div", { style: "flex:none;padding:12px 14px 10px;display:flex;align-items:center;gap:10px" }, [
+      el("input", { type: "text", placeholder: "Search wallets or markets", style: "flex:1;font-family:var(--sans);font-size:12.5px" }),
+      el("span", { style: "font-family:var(--mono);font-size:11px;color:var(--faint)" }, String(P.count)),
+    ]),
+    el("div", { class: "scroll", style: "flex:1;padding:0 8px 8px" }, (S.pool.lanes || []).map(laneRow)),
+    el("div", { style: "flex:none;border-top:1px solid var(--line);padding:10px 14px;display:flex;justify-content:space-between;align-items:baseline" }, [
+      el("span", { style: "font-size:11.5px;color:var(--subtle)" }, "Pool equity"),
+      el("span", { style: "font-family:var(--mono);font-size:15px;font-weight:500" }, usd(S.pool.physical_equity)),
+    ]),
+  ]);
+
+  const main = el("div", { class: "mainpane" });
+  const realised = l ? l.realised_pnl : P.realised_pnl;
+  const vb = l ? l.virtual_bankroll : P.virtual_bankroll;
+  const seed = l ? l.seed_usd : P.seed_usd;
+  const deployed = l ? l.open_usd : P.open_usd;
+  const spent = l ? l.spent_today : P.spent_today;
+
+  const tot = known(realised) && known(ur) ? realised + ur : null;
+
+  main.append(
+    el("div", { style: "flex:none;padding:14px 18px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)" }, [
+      el("div", {}, [
+        el("div", { style: "display:flex;align-items:center;gap:9px" }, [
+          el("span", { style: `font-size:15px;font-weight:${l ? 500 : 600};` + (l ? "font-family:var(--mono)" : "letter-spacing:-.01em") },
+            l ? l.name : "All wallets"),
+          l
+            ? el("span", { style: `font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;` +
+                (l.armed ? "color:var(--mint);background:oklch(0.82 0.13 165 / 0.14)" : "color:var(--faint);background:#17171d") },
+                l.armed ? "ARMED" : "IDLE")
+            : el("span", { style: "font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;color:var(--dim);background:#17171d" },
+                `${P.armed}/${P.count} ARMED`),
+        ]),
+        el("div", { style: "font-size:12.5px;color:var(--subtle);margin-top:4px" },
+          l ? `copying ${l.leader.slice(0, 10)}… at ${(l.pct * 100).toFixed(2)}% · ${p.length} open positions`
+            : `the whole bot · ${p.length} open positions · expand a wallet to narrow to it`),
+      ]),
+      el("div", { style: "flex:1" }),
+      el("div", { style: "text-align:right;margin-right:6px" }, [
+        el("div", { style: "font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.02em" }, usd(vb)),
+        el("div", { style: `font-family:var(--mono);font-size:11.5px;margin-top:2px;color:${col(realised)}` }, `${sgn(realised)} realised`),
+      ]),
+    ]),
+    el("div", { class: "kpis" }, [
+
+      (S.pool?.wallet && S.pool.wallet.equity_pnl != null && !l)
+        ? flashVal(kpi("Wallet P&L (all time)",
+              sgn(S.pool.wallet.equity_pnl), col(S.pool.wallet.equity_pnl),
+              `${usd(S.pool.wallet.portfolio ?? 0)} held · money in ${usd(S.pool.wallet.funding_basis ?? 0, 0)}` +
+              ` · whole wallet, every strategy that ever used it` +
+              (S.pool.physical_age_secs != null && S.pool.physical_age_secs > 120
+                 ? ` · ${Math.round(S.pool.physical_age_secs / 60)}m old` : "")),
+              "k:walletpnl", S.pool.wallet.equity_pnl)
+        : null,
+
+      kpi("Virtual bankroll", usd(vb), "var(--ink)",
+        l ? `seed ${usd(seed, 0)} · ×${(l.cap_scale ?? 1).toFixed(3)}` : `seed ${usd(seed, 0)} · ${P.count} wallets`),
+      flashVal(kpi("Realised P&L", sgn(realised), col(realised), `${(realised / (seed || 1) * 100).toFixed(2)}% on seed`), `k:real:${l ? l.name : "pool"}`, realised),
+      flashVal(kpi("Unrealised", sgn(ur), col(ur), `${p.length} open positions`), `k:unreal:${l ? l.name : "pool"}`, ur),
+      flashVal(kpi("Deployed", usd(deployed), "var(--ink)", `${(deployed / (seed || 1) * 100).toFixed(1)}% of seed`), `k:dep:${l ? l.name : "pool"}`, deployed),
+      flashVal(kpi("Strategy P&L (our fills)", sgn(tot), col(tot),
+                   `realised + unrealised · spent today ${usd(spent)}`),
+               `k:tot:${l ? l.name : "pool"}`, tot),    ].filter(Boolean)),
+    el("div", { class: "contentrow" }, [
+      el("div", { class: "contentcol" }, [chartBlock(), responseTimePanel(), tableBlock()]),
+
+
+      dragHandle("rail", "x", -1, () => document.querySelector(".rail")),
+      healthRail(),
+    ]));
+
+  app.append(connBanner());
+  app.append(el("div", { class: "shell" }, [
+    roster,
+    dragHandle("roster", "x", 1, () => document.querySelector(".roster")),
+    main,
+  ]));
+  renderRailFooter();
+  setFavicon();
+
+
+  applySizes();
+}
+
+let tradesGen = 0;
+async function refreshTrades() {
+  const want = S.focus, gen = ++tradesGen;
+  const tr = await api(`/api/trades?lane=${encodeURIComponent(want || "all")}&limit=60`);
+  if (gen !== tradesGen || want !== S.focus) return;
+  S.trades = tr?.trades || [];
+  render();
+}
+
+Object.assign(S, loadLayout());
+
+let pollGen = 0;
+let pollInFlight = false;
+async function pollOnce() {
+
+  if (S.dragging) return;
+  if (pollInFlight) return;
+  pollInFlight = true;
+  const gen = ++pollGen;
+  try {
+
+  const lane = encodeURIComponent(S.focus || "all");
+
+  const [pool, pos, status, errs, tr, tape, rts] = await Promise.all([
+    api("/api/pool"), api("/api/positions"), api("/api/status"), api("/api/errors"),
+    api(`/api/trades?lane=${lane}&limit=60`), api("/api/trades?lane=all&limit=20"),
+    api("/api/response_times")]);
+  noteConnection(!!pool);
+  if (pool) S.pool = pool;
+  notePositions(pos);
+  if (pos) S.positions = pos.positions || [];
+  if (status) S.status = status;
+  if (pool) S.drift = driftByLane(pool);
+  if (errs) {
+    S.errors = errs.errors || [];
+
+    S.errorsByLane = errs.active_by_lane || errs.by_lane || [];
+    S.errorsAllTimeByLane = errs.by_lane || [];
+    S.errorsActiveWindow = errs.active_window_secs || S.errorsActiveWindow;
+  }
+
+
+  if (tr && lane === encodeURIComponent(S.focus || "all")) S.trades = tr.trades || [];
+  if (tape) { S.tickerTrades = tape.trades || []; noteLatestTrade(S.tickerTrades[0] || null); }
+
+
+  if (rts) S.responseTimes = rts.samples || [];
+
+
+  const laneNames = (S.pool?.lanes || []).map(l => l.name);
+  const eqs = await Promise.all([
+    api("/api/equity?lane=all"),
+    ...laneNames.map(n => api(`/api/equity?lane=${encodeURIComponent(n)}`)),
+  ]);
+  if (gen !== pollGen) return;
+  if (eqs[0]) S.equity.all = eqs[0].points || [];
+  laneNames.forEach((n, i) => { if (eqs[i + 1]) S.equity[n] = eqs[i + 1].points || []; });
+  safeRender();
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+load().then(() => setTimeout(() => { seenPrimed = true; }, 400));
+(async function bootPoll() {
+  while (!S.pool) {
+    await new Promise(r => setTimeout(r, 2000));
+    await pollOnce();
+  }
+  setInterval(pollOnce, 8000);
+})();
+
+</script></body></html>

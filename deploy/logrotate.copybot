@@ -1,0 +1,38 @@
+
+/opt/copybot/run/boot.log {
+    size 5M
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su copybot copybot
+    create 0640 copybot copybot
+}
+
+/opt/copybot/run/guardian.log
+/opt/copybot/run/guardian_cron.log
+/opt/copybot/run/watcher.log
+/opt/copybot/run/switch.log {
+    size 5M
+    rotate 6
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su copybot copybot
+    create 0640 copybot copybot
+}
+
+/opt/copybot/run/watcher_alerts.jsonl {
+    size 5M
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su copybot copybot
+    create 0640 copybot copybot
+}

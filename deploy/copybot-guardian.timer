@@ -1,0 +1,13 @@
+[Unit]
+Description=Run copybot guardian every 11 seconds
+
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=11s
+AccuracySec=1s
+Persistent=true
+Unit=copybot-guardian.service
+
+[Install]
+WantedBy=timers.target

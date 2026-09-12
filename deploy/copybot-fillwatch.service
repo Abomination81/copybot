@@ -1,0 +1,22 @@
+[Unit]
+Description=Copybot independent 15m fill audit (chain vs books)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/opt/copybot/deploy/copybot.env
+Type=oneshot
+User=copybot
+Group=copybot
+WorkingDirectory=/opt/copybot
+Environment=PYTHONUNBUFFERED=1
+Environment=BOT_DIR=/opt/copybot
+Environment=BOT_PORT=8807
+CPUAffinity=0
+Nice=10
+ExecStart=/usr/bin/python3 /opt/copybot/deploy/fillwatch.py --once
+
+SuccessExitStatus=1 2
+
+[Install]
+WantedBy=multi-user.target
