@@ -6024,14 +6024,7 @@ naked exposure and is flattened regardless of the merge outcome"
                         .iter()
                         .find(|l| l.cfg.name == rp.name)
                         .cloned() else { continue };
-                    let built = copybot_hot::lanes::SizingPolicy::build(
-                        0,
-                        rp.spec.seed_usd,
-                        copybot_hot::lanes::Sizing::Pct(rp.spec.pct),
-                        rp.spec.max_effective_pct,
-                        rp.spec.compound,
-                        &copybot_hot::budget::Fracs::default(),
-                    );
+                    let built = copybot_hot::config::build_reprice_policy(&lane, &rp.spec);
                     let hybrid = lane.cfg.execution
                         == copybot_hot::lanes::Execution::Hybrid;
                     let (want_b, want_s) = (

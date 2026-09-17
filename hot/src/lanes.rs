@@ -152,6 +152,7 @@ impl SizingPolicy {
                 return Err(format!("pct must be in (0,1], got {p}"));
             }
         }
+        crate::budget::validate_fracs(fracs)?;
         let caps = crate::budget::derive(seed_usd, fracs);
         if !(caps.max_usd_per_fill <= caps.per_market_usd
             && caps.per_market_usd <= caps.max_open_usd)
@@ -217,6 +218,9 @@ impl Default for LaneState {
 }
 pub struct Lane {
     pub cfg: LaneConfig,
+    /// The cap ratios that belong to this lane. Runtime seed changes must reuse these
+    /// ratios; `Fracs::default()` is only the default for a newly-created runtime lane.
+    pub budget_fracs: crate::budget::Fracs,
     pub state: LaneState,
     pub per_token: Mutex<HashMap<String, Micro>>,
     pub holdings: Mutex<HashMap<String, f64>>,
@@ -257,6 +261,7 @@ impl Lane {
         }
         Self {
             cfg,
+            budget_fracs: crate::budget::Fracs::default(),
             state,
             per_token: Mutex::new(HashMap::new()),
             holdings: Mutex::new(HashMap::new()),
@@ -264,6 +269,33 @@ impl Lane {
             legacy: Mutex::new(HashMap::new()),
             sell_reservations: Mutex::new(HashMap::new()),
         }
+    }
+    /// Construct a bankroll-backed lane with its initial policy already carrying the
+    /// authoritative seed and fractions. This makes the first registry reconciliation a
+    /// no-op and gives later seed edits the same cap ratios as boot.
+    pub fn new_seeded(
+        cfg: LaneConfig,
+        seed_usd: f64,
+        budget_fracs: crate::budget::Fracs,
+    ) -> Result<Self, String> {
+        let policy = SizingPolicy::build(
+            0,
+            seed_usd,
+            cfg.sizing,
+            cfg.max_effective_pct,
+            cfg.compound,
+            &budget_fracs,
+        )?;
+        let mut lane = Self::new(cfg);
+        lane.budget_fracs = budget_fracs;
+        let mut slot = lane
+            .state
+            .policy
+            .write()
+            .map_err(|_| "policy lock poisoned while seeding lane".to_string())?;
+        *slot = std::sync::Arc::new(policy);
+        drop(slot);
+        Ok(lane)
     }
     pub fn set_holding(&self, token: &str, shares: f64) {
         let mut h = self.holdings.lock().unwrap();
@@ -552,7 +584,7 @@ impl Router {
             return Err(Skip::BelowVenueMinimum);
         }
         let usd_micro = (usd * MICRO) as Micro;
-        let day_cap = (c.daily_budget_usd * scale * MICRO) as Micro;
+        let day_cap = (pol.caps.daily_usd * scale * MICRO) as Micro;
         if lane.state.spent_today.load(Ordering::Relaxed) + usd_micro > day_cap {
             return Err(Skip::DailyBudget);
         }
@@ -1640,6 +1672,34 @@ mod tests {
         assert!(r.decide1(1, & dec("777777777", 0, 0.60, 5000.0, 5000.0)).is_ok());
     }
     #[test]
+    fn daily_budget_enforcement_uses_the_active_policy_generation() {
+        let r = router2();
+        let lane = r.lane(0).unwrap();
+        let fracs = crate::budget::Fracs {
+            open: 1.0,
+            per_market: 1.0,
+            per_fill: 1.0,
+            daily: 0.01,
+        };
+        let next = SizingPolicy::build(
+            0,
+            1_000.0,
+            Sizing::Pct(0.05),
+            0.05,
+            false,
+            &fracs,
+        )
+        .unwrap();
+        lane.apply_policy(next).unwrap();
+        lane.state.spent_today.store((9.0 * MICRO) as Micro, Ordering::Relaxed);
+
+        assert_eq!(
+            r.decide1(0, &dec("policy_daily", 0, 0.60, 200.0, 200.0)),
+            Err(Skip::DailyBudget),
+            "the active policy's $10 daily cap must replace cfg's stale $500 boot cap"
+        );
+    }
+    #[test]
     fn per_market_cap_binds() {
         let r = router2();
         let mut n = 0;
@@ -2233,6 +2293,12 @@ mod tests {
         ] {
             assert!(bad.is_err(), "an out-of-range policy must not build");
         }
+        let bad_fracs = crate::budget::Fracs { daily: -1.0, ..f };
+        assert!(
+            SizingPolicy::build(0, 10_000.0, Sizing::Pct(0.10), 0.25, false, &bad_fracs)
+                .is_err(),
+            "a policy with invalid cap fractions must not build"
+        );
         assert_eq!(lane.policy().generation, 0, "nothing was applied");
         assert!(
             matches!(lane.policy().sizing, Sizing::Pct(p) if (p - 0.05).abs() < 1e-12)

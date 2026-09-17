@@ -324,7 +324,23 @@ pub fn build_runtime_lane(
             max_drawdown_usd: (spec.seed_usd * 0.15).max(1.0),
             ..Default::default()
         });
-    Ok((Lane::new(cfg), risk))
+    Ok((Lane::new_seeded(cfg, spec.seed_usd, fracs)?, risk))
+}
+/// Rebuild the atomic runtime policy after a wallet-registry edit without changing the
+/// lane's configured cap ratios. The registry owns the seed and copy percentage; the boot
+/// configuration owns how that seed is partitioned into fill/market/open/daily limits.
+pub fn build_reprice_policy(
+    lane: &Lane,
+    spec: &crate::wallets::WalletSpec,
+) -> Result<crate::lanes::SizingPolicy, String> {
+    crate::lanes::SizingPolicy::build(
+        0,
+        spec.seed_usd,
+        Sizing::Pct(spec.pct),
+        spec.max_effective_pct,
+        spec.compound,
+        &lane.budget_fracs,
+    )
 }
 pub fn addr20(s: &str) -> Result<[u8; 20], String> {
     let b = hex::decode(s.trim_start_matches("0x")).map_err(|e| format!("{s}: {e}"))?;
@@ -497,11 +513,117 @@ impl Root {
                 exclude_political: l.execution.exclude_political,
             };
             cfg.validate()?;
-            out.push(Lane::new(cfg));
+            let lane = if let Some(seed_usd) = l.budget.bankroll_usd {
+                let fracs = crate::budget::Fracs {
+                    open: l.budget.open_frac,
+                    per_market: l.budget.per_market_frac,
+                    per_fill: l.budget.per_fill_frac,
+                    daily: l.budget.daily_frac,
+                };
+                Lane::new_seeded(cfg, seed_usd, fracs)?
+            } else {
+                Lane::new(cfg)
+            };
+            out.push(lane);
         }
         if out.is_empty() {
             return Err("no enabled lanes — nothing to copy".into());
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    fn bankroll_root() -> Root {
+        toml::from_str(
+            r#"
+[bot]
+mode = "dry"
+clob_host = "https://example.invalid"
+funder = "0x1111111111111111111111111111111111111111"
+signer = "0x2222222222222222222222222222222222222222"
+events_path = "data/events.jsonl"
+control_path = "run/operator.json"
+
+[[lane]]
+name = "alpha"
+wallet = "0x3333333333333333333333333333333333333333"
+enabled = true
+leader_max_order_usd = 100.0
+leader_peak_exposure_usd = 100.0
+
+[lane.sizing]
+mode = "pct"
+pct = 0.005
+compound = false
+max_effective_pct = 0.05
+min_order_usd = 1.0
+min_fill_floor = true
+
+[lane.budget]
+bankroll_usd = 550.0
+max_buy_price = 0.95
+min_buy_price = 0.02
+
+[lane.execution]
+mode = "taker"
+copy_makers = false
+copy_maker_sells = false
+"#,
+        )
+        .expect("fixture must parse")
+    }
+
+    #[test]
+    fn bankroll_caps_survive_boot_and_the_first_registry_reconciliation() {
+        let root = bankroll_root();
+        let lanes = root.build_lanes().expect("bankroll lane must build");
+        let specs = root.wallet_specs();
+        let lane = &lanes[0];
+        let policy = lane.policy();
+
+        assert!((policy.seed_usd - 550.0).abs() < 1e-9);
+        assert!((policy.caps.max_open_usd - 467.50).abs() < 0.01);
+        assert!((policy.caps.per_market_usd - 280.50).abs() < 0.01);
+        assert!((policy.caps.max_usd_per_fill - 116.88).abs() < 0.01);
+        assert!((policy.caps.daily_usd - 327.25).abs() < 0.01);
+
+        let applied = vec![(
+            lane.cfg.name.clone(),
+            0.005,
+            policy.seed_usd,
+            policy.max_effective_pct,
+            policy.compound,
+            lane.state.rest_buys.load(Ordering::Relaxed),
+            lane.state.rest_sells.load(Ordering::Relaxed),
+            lane.cfg.min_buy_price,
+            lane.cfg.max_buy_price,
+        )];
+        assert!(
+            crate::wallets::repricing(&specs, &applied).is_empty(),
+            "an unchanged boot lane must not be repriced on the first two-second tick"
+        );
+    }
+
+    #[test]
+    fn hot_seed_change_preserves_the_toml_cap_ratios() {
+        let root = bankroll_root();
+        let mut lanes = root.build_lanes().expect("bankroll lane must build");
+        let lane = lanes.pop().unwrap();
+        let mut spec = root.wallet_specs().pop().unwrap();
+        spec.seed_usd = 1_100.0;
+
+        let next = build_reprice_policy(&lane, &spec).expect("reprice must build");
+        lane.apply_policy(next).expect("reprice must publish");
+        let policy = lane.policy();
+
+        assert!((policy.caps.max_open_usd - 935.00).abs() < 0.01);
+        assert!((policy.caps.per_market_usd - 561.00).abs() < 0.01);
+        assert!((policy.caps.max_usd_per_fill - 233.77).abs() < 0.01);
+        assert!((policy.caps.daily_usd - 654.50).abs() < 0.01);
     }
 }
