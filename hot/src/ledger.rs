@@ -107,6 +107,7 @@ pub struct Ledger {
     pub write_failures: u64,
     pub last_write_error: Option<String>,
     pub booked_orders: std::collections::HashSet<String>,
+    settlement_keys: std::collections::HashSet<(String, String)>,
 }
 impl Ledger {
     pub fn new(path: &str, cfgs: &[(String, RiskConfig)]) -> Self {
@@ -123,6 +124,7 @@ impl Ledger {
             write_failures: 0,
             last_write_error: None,
             booked_orders: std::collections::HashSet::new(),
+            settlement_keys: std::collections::HashSet::new(),
         };
         l.replay();
         l
@@ -288,12 +290,83 @@ impl Ledger {
         self.apply(&row, true);
         was
     }
-    pub fn record_settlement(&mut self, lane: &str, token: &str, payout: f64) {
+    pub fn record_settlement(&mut self, lane: &str, token: &str, payout: f64) -> bool {
+        if !payout.is_finite() || !(0.0..=1.0).contains(&payout)
+            || self.holdings(lane).get(token).copied().unwrap_or(0.0) <= 1e-9
+        {
+            return false;
+        }
         let row = serde_json::json!(
             { "ev" : "settle", "lane" : lane, "token" : token, "payout" : payout, "t" :
-            now_secs() }
+            now_secs(), "key": crate::settlement::cross_writer_key(lane, token) }
         );
-        self.apply(&row, true);
+        self.apply(&row, true)
+    }
+
+    /// Close a still-open position only when the wallet's redemption history and
+    /// a complete, subsequent portfolio snapshot agree. Missing shares alone
+    /// cannot establish a payout. One durable event closes cost and books P&L.
+    pub fn settle_redeemed_open(
+        &mut self,
+        lane: &str,
+        token: &str,
+        redemption: &crate::settlement::Redemption,
+        snapshot: &crate::positions::Positions,
+        pending: bool,
+    ) -> Result<bool, String> {
+        let key = redemption.lane_key(lane);
+        let alt_key = crate::settlement::cross_writer_key(lane, token);
+        if self.settlement_keys.contains(&(lane.into(), key.clone()))
+            || self.settlement_keys.contains(&(lane.into(), alt_key.clone()))
+        {
+            return Ok(false);
+        }
+        let Some(pos) = self.lanes.get(lane).and_then(|b| b.positions.get(token)) else {
+            return Ok(false);
+        };
+        if pos.shares <= 1e-9 { return Ok(false); }
+        if !redemption.is_bookable() || pending
+            || redemption.asset != token
+            || !snapshot.confirms_zero(token, redemption.ts)
+        {
+            return Err("redemption requires an explicit matching token, a complete post-redemption zero balance, and no pending order".into());
+        }
+        // Do not assign a partial redemption, old redemption, or pooled claim
+        // to a whole position. These cases need further attribution evidence.
+        if pos.last_fill_t <= 0 || pos.last_fill_t > redemption.ts
+            || redemption.size + 1e-6 < pos.shares
+            || self.lanes.values().filter(|b| b.positions.get(token)
+                .map(|p| p.shares > 1e-9).unwrap_or(false)).count() != 1
+        {
+            return Err("redemption amount, time, or lane ownership is ambiguous".into());
+        }
+        // A prior neutral release has unbooked basis of its own. Closing only
+        // the residual would consume the token's dedupe key and strand that
+        // basis. Defer mixed histories rather than silently lose its P&L.
+        let history = std::fs::read_to_string(&self.path)
+            .map_err(|_| "cannot verify settlement reconciliation history".to_string())?;
+        for line in history.lines().filter(|line| !line.trim().is_empty()) {
+            let row: serde_json::Value = serde_json::from_str(line)
+                .map_err(|_| "cannot settle with malformed ledger history".to_string())?;
+            if row["ev"].as_str() == Some("fill") && row["token"].as_str() == Some(token)
+                && row["side"].as_u64() == Some(1) && row["recon"].as_bool() == Some(true)
+                && row["shares"].as_f64().unwrap_or(0.0) > 1e-9
+            {
+                return Err("open position also has a neutral reconciliation release; combined basis requires review".into());
+            }
+        }
+        let row = serde_json::json!({
+            "ev": "settle", "lane": lane, "token": token,
+            "payout": redemption.usdc / redemption.size,
+            "shares": pos.shares, "proceeds": pos.shares * redemption.usdc / redemption.size,
+            "key": key, "alt_key": alt_key, "redemption_tx": redemption.tx,
+            "redemption_t": redemption.ts, "t": now_secs(),
+            "why": "auto-redemption confirmed by activity and complete zero-balance snapshot"
+        });
+        if !self.apply(&row, true) {
+            return Err("settlement ledger write failed or settlement already recorded".into());
+        }
+        Ok(true)
     }
     pub fn record_merge(
         &mut self,
@@ -345,7 +418,7 @@ impl Ledger {
         avg_cost: f64,
         why: &str,
         key: &str,
-    ) {
+    ) -> bool {
         let pnl = proceeds - shares * avg_cost;
         let row = serde_json::json!(
             { "ev" : "realised_adjust", "lane" : lane, "token" : token, "shares" :
@@ -353,7 +426,7 @@ impl Ledger {
             why, "key" : key, "alt_key" : crate ::settlement::cross_writer_key(lane,
             token), "t" : now_secs() }
         );
-        self.apply(&row, true);
+        self.apply(&row, true)
     }
     pub fn corrected_keys(&self) -> std::collections::HashSet<String> {
         let mut out = std::collections::HashSet::new();
@@ -403,9 +476,26 @@ impl Ledger {
         if !self.lanes.contains_key(lane_name) {
             return false;
         }
+        let mut settlement_keys = Vec::new();
+        if matches!(ev, "settle" | "realised_adjust") {
+            for field in ["key", "alt_key"] {
+                if let Some(key) = row[field].as_str() {
+                    settlement_keys.push((lane_name.to_string(), key.to_string()));
+                }
+            }
+            // Legacy settle rows did not carry a key. Replaying one still
+            // protects against later recovery crediting the same token again.
+            if ev == "settle" {
+                settlement_keys.push((lane_name.into(), crate::settlement::cross_writer_key(lane_name, &token)));
+            }
+            if settlement_keys.iter().any(|key| self.settlement_keys.contains(key)) {
+                return false;
+            }
+        }
         if durable && !self.append(row) {
             return false;
         }
+        self.settlement_keys.extend(settlement_keys);
         if let Some(h) = row["order_hash"].as_str() {
             if !h.is_empty() {
                 self.booked_orders.insert(h.to_string());
@@ -493,6 +583,7 @@ of …{} but only {:.4} tracked — excess IGNORED (replay-safe), investigate th
                         let realised = pos.shares * payout - pos.cost;
                         lane.risk.on_close(realised);
                         lane.risk.on_flat();
+                        pos.proceeds += pos.shares * payout;
                         pos.shares = 0.0;
                         pos.cost = 0.0;
                         pos.his_cost = 0.0;
@@ -729,6 +820,7 @@ pub fn equity_series_at(path: &str, lane: Option<&str>) -> Vec<(i64, f64)> {
             Err(_) => return Vec::new(),
         };
         let mut scratch = Ledger {
+            settlement_keys: std::collections::HashSet::new(),
             lane_ids: HashMap::new(),
             path: String::new(),
             lanes: HashMap::new(),
@@ -915,8 +1007,15 @@ pub fn scan_for_settlement(
         let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
             continue
         };
-        if let Some(key) = v["key"].as_str() {
-            keys.insert(key.to_string());
+        for field in ["key", "alt_key"] {
+            if let Some(key) = v[field].as_str() {
+                keys.insert(key.to_string());
+            }
+        }
+        if v["ev"].as_str() == Some("settle") {
+            if let (Some(lane), Some(token)) = (v["lane"].as_str(), v["token"].as_str()) {
+                keys.insert(crate::settlement::cross_writer_key(lane, token));
+            }
         }
         if v["ev"].as_str() == Some("fill") && v["side"].as_u64() == Some(1)
             && v["recon"].as_bool() == Some(true)

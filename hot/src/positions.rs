@@ -30,6 +30,25 @@ pub struct Positions {
 pub const PAGE: usize = 500;
 pub const MAX_PAGES: usize = 50;
 impl Positions {
+    /// A malformed balance row cannot establish that any token is absent.
+    pub fn confirms_zero(&self, token: &str, not_before: i64) -> bool {
+        if !self.may_act_destructively() || self.as_of < not_before {
+            return false;
+        }
+        for row in &self.rows {
+            let Some(asset) = row["asset"].as_str().filter(|s| !s.is_empty()) else {
+                return false;
+            };
+            let Some(size) = row["size"].as_f64()
+                .or_else(|| row["size"].as_str().and_then(|s| s.parse().ok())) else {
+                return false;
+            };
+            if !size.is_finite() || size < 0.0 || (asset == token && size > 1e-9) {
+                return false;
+            }
+        }
+        true
+    }
     pub fn empty(as_of: i64) -> Self {
         Self {
             rows: Vec::new(),

@@ -8,7 +8,7 @@ use copybot_hot::calldata::{decode_all, participants};
 use copybot_hot::config::{addr20, Root};
 use copybot_hot::feeds::{FeedConfig, FeedStats, RawTx};
 use copybot_hot::lanes::{resolve_route, Route, Router, MICRO};
-use copybot_hot::order::{amounts, json_body, safe_salt, Order};
+use copybot_hot::order::{amounts, json_body, order_signer, safe_salt, Order};
 use copybot_hot::race::{FillKey, RaceBook};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -1801,7 +1801,7 @@ actually reach the venue and are refused. This key controls no funds."
             if !a.eq_ignore_ascii_case(&signer) {
                 eprintln!(
                     "[auth] ⚠️  config signer {signer} does NOT own PRIVATE_KEY \
-({a}) — using the DERIVED address everywhere. Fix the config."
+({a}) — using the DERIVED owner address for authentication and signing. Fix the config."
                 );
             }
             a
@@ -4678,7 +4678,7 @@ derived but are NOT accepted; every order would be refused. Refusing to continue
                         let ord = copybot_hot::order::Order {
                             salt: copybot_hot::order::safe_salt(now_ms()),
                             maker: f3.clone(),
-                            signer: sa3.clone(),
+                            signer: order_signer(st3, &f3, &sa3).to_owned(),
                             token_id: tok.clone(),
                             maker_amount: ma,
                             taker_amount: ta,
@@ -4973,7 +4973,7 @@ SOLD — the wallet still holds everything it held before.",
                     let ord = copybot_hot::order::Order {
                         salt: copybot_hot::order::safe_salt(now_ms()),
                         maker: f4.clone(),
-                        signer: sa4.clone(),
+                        signer: order_signer(st4, &f4, &sa4).to_owned(),
                         token_id: tok.clone(),
                         maker_amount: ma,
                         taker_amount: ta,
@@ -5562,7 +5562,7 @@ naked exposure and is flattened regardless of the merge outcome"
                             let ord = copybot_hot::order::Order {
                                 salt: copybot_hot::order::safe_salt(now_ms()),
                                 maker: f5.clone(),
-                                signer: sa5.clone(),
+                                signer: order_signer(st5, &f5, &sa5).to_owned(),
                                 token_id: tok.to_string(),
                                 maker_amount: ma,
                                 taker_amount: ta,
@@ -5871,7 +5871,7 @@ naked exposure and is flattened regardless of the merge outcome"
                     let ord = copybot_hot::order::Order {
                         salt: copybot_hot::order::safe_salt(now_ms()),
                         maker: f6.clone(),
-                        signer: sa6.clone(),
+                        signer: order_signer(st6, &f6, &sa6).to_owned(),
                         token_id: o.token.clone(),
                         maker_amount: ma,
                         taker_amount: ta,
@@ -6725,7 +6725,7 @@ this as a bad read, not a mass cancellation",
                             .or_else(|| {
                                 p["curPrice"].as_str().and_then(|x| x.parse().ok())
                             })
-                            .unwrap_or(0.0),
+                            .unwrap_or(f64::NAN),
                     };
                     if let (Some(tok), Some(pay)) = (
                         p["asset"].as_str(),
@@ -6751,7 +6751,9 @@ this as a bad read, not a mass cancellation",
                             .get(&name)
                             .map(|b| b.risk.realised_pnl)
                             .unwrap_or(0.0);
-                        g.ledger.record_settlement(&name, tok, pay);
+                        if !g.ledger.record_settlement(&name, tok, pay) {
+                            continue;
+                        }
                         let after = g
                             .ledger
                             .lanes
@@ -6783,6 +6785,7 @@ this as a bad read, not a mass cancellation",
             emitter.clone(),
             funder.clone(),
         );
+        let settlement_pending = pending_log.clone();
         tokio::spawn(async move {
             let http = reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
@@ -6793,7 +6796,7 @@ this as a bad read, not a mass cancellation",
             loop {
                 tick.tick().await;
                 let ledger_path = ctl.lock().unwrap().ledger.path.clone();
-                let (corrected, releases) = copybot_hot::ledger::scan_for_settlement(
+                let (mut corrected, releases) = copybot_hot::ledger::scan_for_settlement(
                     &ledger_path,
                 );
                 const PAGE: usize = 200;
@@ -6812,16 +6815,15 @@ this as a bad read, not a mass cancellation",
                         _ => break,
                     };
                     let rows = copybot_hot::settlement::parse_redemptions(&body);
-                    let short = rows.len() < PAGE;
-                    let fresh = rows.iter().any(|r| !corrected.contains(&r.key()));
+                    let short = body.as_array().map(|a| a.len() < PAGE).unwrap_or(true);
                     redemptions.extend(rows);
-                    if short || !fresh {
+                    if short {
                         break;
                     }
                     if page + 1 == MAX_PAGES {
                         eprintln!(
-                            "[settle] stopped at {MAX_PAGES} pages with unbooked \
-redemptions still older — the next tick continues from the top"
+                            "[settle] redemption scan reached the {MAX_PAGES}-page cap; \
+older history is not covered and may require offline reconciliation"
                         );
                     }
                 }
@@ -6832,6 +6834,10 @@ redemptions still older — the next tick continues from the top"
                 if todo.is_empty() {
                     continue;
                 }
+                let settlement_snapshot = copybot_hot::positions::fetch(
+                    &http, "https://data-api.polymarket.com", &fund, "0", "&includeArchived=true",
+                    copybot_hot::ledger::now_secs(),
+                ).await;
                 let lane_names: Vec<String> = rt
                     .snapshot()
                     .iter()
@@ -6868,9 +6874,11 @@ redemptions still older — the next tick continues from the top"
                         }
                         toks
                     };
-                    let Some(tok) = tokens
-                        .get(r.outcome_index as usize)
-                        .filter(|t| !t.is_empty()) else { continue };
+                    let Some(tok) = r.token(&tokens) else {
+                        em.emit(serde_json::json!({"t": now_ms(), "ev": "settle_deferred",
+                            "reason": "redemption token mapping missing or inconsistent"}));
+                        continue;
+                    };
                     let payout_per_share = r.usdc / r.size;
                     let mut booked: Option<(String, f64)> = None;
                     for name in &lane_names {
@@ -6882,7 +6890,7 @@ redemptions still older — the next tick continues from the top"
                         if corrected.contains(&xkey) {
                             eprintln!(
                                 "[settle] {name}: skipping token …{} — already \
-                                       booked by settlewatch ({xkey})",
+                                       booked by settlement accounting ({xkey})",
                                 & tok[tok.len().saturating_sub(8)..]
                             );
                             em.emit(
@@ -6890,7 +6898,7 @@ redemptions still older — the next tick continues from the top"
                                     { "t" : now_ms(), "ev" : "settle_dedupe_crosswriter", "lane"
                                     : name, "tok" : & tok[..tok.len().min(14)], "key" : key,
                                     "alt_key" : xkey, "tx" : & r.tx, "note" :
-                                    "settlewatch already credited this settlement; \
+                                    "a settlement writer already credited this token; \
                                          if this token really redeemed twice, this is the \
                                          payout that went unbooked"
                                     }
@@ -6898,6 +6906,31 @@ redemptions still older — the next tick continues from the top"
                             );
                             continue;
                         }
+                        let pending = settlement_pending.lock().unwrap().open_tokens()
+                            .iter().any(|(_, token)| token == tok);
+                        let mut guard = ctl.lock().unwrap();
+                        if guard.ledger.holdings(name).get(tok).copied().unwrap_or(0.0) > 1e-9 {
+                            let stale = copybot_hot::ledger::now_secs() - settlement_snapshot.as_of > 120;
+                            let result = guard.ledger.settle_redeemed_open(
+                                name, tok, r, &settlement_snapshot, pending || stale,
+                            );
+                            drop(guard);
+                            match result {
+                                Ok(true) => {
+                                    corrected.insert(key.clone());
+                                    corrected.insert(xkey);
+                                    em.emit(serde_json::json!({"t": now_ms(), "ev": "settle",
+                                        "lane": name, "token": tok, "payout": payout_per_share,
+                                        "key": key, "source": "redemption_activity"}));
+                                }
+                                Ok(false) => {},
+                                Err(reason) => em.emit(serde_json::json!({"t": now_ms(),
+                                    "ev": "settle_deferred", "lane": name, "token": tok,
+                                    "reason": reason})),
+                            }
+                            continue;
+                        }
+                        drop(guard);
                         let Some(&(released, avg_cost, rel_t)) = releases
                             .get(&(name.clone(), tok.to_string())) else { continue };
                         if rel_t < r.ts - SETTLE_CLOCK_SLOP_SECS {
@@ -6907,10 +6940,9 @@ redemptions still older — the next tick continues from the top"
                         if shares <= 1e-9 {
                             continue;
                         }
-                        booked = Some((name.clone(), shares));
                         let proceeds = shares * payout_per_share;
                         let mut g = ctl.lock().unwrap();
-                        g.ledger
+                        let written = g.ledger
                             .record_realised_adjustment_tx(
                                 name,
                                 tok,
@@ -6922,6 +6954,14 @@ redemptions still older — the next tick continues from the top"
                                 &key,
                             );
                         drop(g);
+                        if !written {
+                            em.emit(serde_json::json!({"t": now_ms(), "ev": "settle_deferred",
+                                "lane": name, "token": tok, "reason": "adjustment not written or already booked"}));
+                            continue;
+                        }
+                        corrected.insert(key.clone());
+                        corrected.insert(xkey);
+                        booked = Some((name.clone(), shares));
                         eprintln!(
                             "[settle] {name}: CORRECTED a prior neutral release for \
                                    token …{} — real payout ${payout_per_share:.4}/sh \
@@ -7870,7 +7910,7 @@ savings withdrawal — nothing was done automatically. Check the market by hand.
                         let ord = Order {
                             salt,
                             maker: funder.clone(),
-                            signer: signer_addr.clone(),
+                            signer: order_signer(sig_type, &funder, &signer_addr).to_owned(),
                             token_id: intent.token_id.clone(),
                             maker_amount: ma,
                             taker_amount: ta,

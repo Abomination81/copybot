@@ -1186,7 +1186,7 @@ def check_share_drift(held, chain, tol_shares=SHARE_API_EPSILON, settling=(), re
             ignored_dust.append('token ...%s: %.4f untracked sh ($%.4f at mark)' % (tok[-10:], -d, -d * _num(chain.get(tok, {}), 'curPrice')))
             continue
         if d > 0 and str(tok) in resolved:
-            ignored_dust.append('token ...%s: %.4f sh the ledger still shows after the market RESOLVED — the venue redeemed it; settlement, not drift' % (tok[-10:], d))
+            ignored_dust.append('token ...%s: %.4f sh the ledger still shows after the market RESOLVED — awaiting settlement accounting; resolution alone does not prove redemption' % (tok[-10:], d))
             continue
         total_drift += abs(d)
         noticed.append('token ...%s: ledger %.4f sh vs chain %.4f sh (%+.4f) — %s' % (tok[-10:], sh, have, d, 'we would OVERSELL and be refused' if d > 0 else 'STRANDED shares the ledger cannot see'))

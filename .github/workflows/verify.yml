@@ -34,7 +34,7 @@ jobs:
           tar -xzf "$audit_dir/gitleaks.tar.gz" -C "$audit_dir" gitleaks
           "$audit_dir/gitleaks" dir . --redact --no-banner
       - name: Rust regression tests
-        run: cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot
+        run: cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot --tests
       - name: Observer and packaging tests
         run: python -m pytest deploy/ scripts/test_check_release.py -q -p no:cacheprovider
       - name: Generated guides are current

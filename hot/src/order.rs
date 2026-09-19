@@ -13,6 +13,11 @@ uint8 signatureType,uint256 timestamp,bytes32 metadata,bytes32 builder)";
 const DOMAIN_TYPE: &str = "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)";
 const DOMAIN_NAME: &str = "Polymarket CTF Exchange";
 const DOMAIN_VERSION: &str = "2";
+/// Order identity only: L1/L2 authentication still uses the owner EOA.
+/// POLY_1271 verifies the contract wallet, so its maker and signer must match.
+pub fn order_signer<'a>(signature_type: u8, funder: &'a str, owner: &'a str) -> &'a str {
+    if signature_type == 3 { funder } else { owner }
+}
 pub fn keccak(data: &[u8]) -> [u8; 32] {
     let mut k = Keccak::v256();
     let mut out = [0u8; 32];
@@ -188,4 +193,91 @@ pub const MAX_SALT: u128 = 1u128 << 62;
 #[inline]
 pub fn safe_salt(seed: u128) -> u128 {
     seed % MAX_SALT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use k256::ecdsa::VerifyingKey;
+
+    fn recover(digest: &[u8; 32], signature: &[u8]) -> VerifyingKey {
+        let sig = Signature::from_slice(&signature[..64]).unwrap();
+        let recovery = RecoveryId::from_byte(signature[64] - 27).unwrap();
+        VerifyingKey::recover_from_prehash(digest, &sig, recovery).unwrap()
+    }
+
+    #[test]
+    fn order_identity_signature_and_auth_for_all_wallet_types() {
+        // Artificial offline identities only; no operator credentials or wallets.
+        let key = [1u8; 32];
+        let owner = crate::auth::address_from_key(&key).unwrap();
+        let contract = format!("0x{}", "22".repeat(20));
+        let expected_key = *SigningKey::from_bytes((&key).into()).unwrap().verifying_key();
+        let creds = crate::auth::ApiCreds {
+            key: "test-api-key".into(),
+            secret: "dGVzdA==".into(),
+            passphrase: "test-passphrase".into(),
+        };
+        for signature_type in 0..=3 {
+            for side in 0..=1 {
+                for neg_risk in [false, true] {
+                    let funder = if signature_type == 0 { &owner } else { &contract };
+                    let order = Order {
+                        salt: 123,
+                        maker: funder.clone(),
+                        signer: order_signer(signature_type, funder, &owner).to_owned(),
+                        token_id: "123456".into(),
+                        maker_amount: 1_000_000,
+                        taker_amount: 2_000_000,
+                        side,
+                        signature_type,
+                        timestamp: 1_700_000_000_000,
+                        neg_risk,
+                    };
+                    let signature = order.sign_for_type(&key);
+                    let bytes = hex::decode(signature.trim_start_matches("0x")).unwrap();
+                    if signature_type == 3 {
+                        assert_eq!(order.signer, contract);
+                        assert_eq!(order.signer, order.maker);
+                        assert_ne!(order.signer, owner);
+                        // Reconstruct the verifier's TypedDataSign hash using the
+                        // funding contract, independent of the order.signer field.
+                        let nested_words = [
+                            keccak(SOLADY_TYPE.as_bytes()),
+                            order.struct_hash(),
+                            keccak(b"DepositWallet"),
+                            keccak(b"1"),
+                            word_u128(CHAIN_ID as u128),
+                            word_addr(&contract),
+                            [0u8; 32],
+                        ];
+                        let digest = keccak(&[
+                            &[0x19, 0x01][..],
+                            &order.domain_separator(),
+                            &keccak(&nested_words.concat()),
+                        ].concat());
+                        assert_eq!(recover(&digest, &bytes), expected_key);
+                        assert_eq!(&bytes[65..97], &order.domain_separator());
+                        assert_eq!(&bytes[97..129], &order.struct_hash());
+                        assert_eq!(&bytes[129..bytes.len() - 2], ORDER_TYPE.as_bytes());
+                        assert_eq!(&bytes[bytes.len() - 2..], &(ORDER_TYPE.len() as u16).to_be_bytes());
+                    } else {
+                        assert_eq!(order.signer, owner);
+                        assert_eq!(bytes.len(), 65);
+                        assert_eq!(recover(&order.digest(), &bytes), expected_key);
+                    }
+                    for kind in ["FAK", "GTC", "GTD"] {
+                        let payload = json_body_exp(&order, &signature, &creds.key, kind, 1234);
+                        assert_eq!(payload["order"]["maker"], *funder);
+                        assert_eq!(payload["order"]["signer"], if signature_type == 3 { contract.as_str() } else { owner.as_str() });
+                        assert_eq!(payload["order"]["signature"], signature);
+                        assert_eq!(payload["owner"], creds.key);
+                        let body = payload.to_string();
+                        let headers = crate::auth::l2_headers(&owner, &creds, 1234, "POST", "/order", Some(&body)).unwrap();
+                        assert_eq!(headers.iter().find(|(k, _)| *k == crate::auth::POLY_ADDRESS).unwrap().1, owner);
+                    }
+                }
+            }
+        }
+    }
 }

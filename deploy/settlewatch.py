@@ -72,8 +72,10 @@ def token_index():
 def already_booked(keys_wanted):
     seen = set()
     for e in _rows(LEDGER):
-        if e.get('ev') != 'realised_adjust':
+        if e.get('ev') not in ('realised_adjust', 'settle'):
             continue
+        if e.get('ev') == 'settle' and e.get('lane') and e.get('token'):
+            seen.add('settle:%s:%s' % (e['lane'], e['token']))
         for field in ('key', 'alt_key'):
             if e.get(field):
                 seen.add(str(e[field]))

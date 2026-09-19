@@ -5,7 +5,9 @@ pub struct PositionView {
     pub cur_price: f64,
 }
 pub fn resolved_payout(pos: PositionView) -> Option<f64> {
-    if pos.redeemable { Some(pos.cur_price.clamp(0.0, 1.0)) } else { None }
+    if pos.redeemable && pos.cur_price.is_finite() && (0.0..=1.0).contains(&pos.cur_price) {
+        Some(pos.cur_price)
+    } else { None }
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Redemption {
@@ -13,11 +15,13 @@ pub struct Redemption {
     pub tx: String,
     #[serde(rename = "conditionId", default)]
     pub condition_id: String,
-    #[serde(rename = "outcomeIndex", default)]
+    #[serde(rename = "outcomeIndex")]
     pub outcome_index: u32,
     #[serde(default)]
+    pub asset: String,
+    #[serde(default)]
     pub size: f64,
-    #[serde(rename = "usdcSize", default)]
+    #[serde(rename = "usdcSize")]
     pub usdc: f64,
     #[serde(rename = "timestamp", default)]
     pub ts: i64,
@@ -30,7 +34,16 @@ impl Redemption {
         format!("{lane}|{}", self.key())
     }
     pub fn is_bookable(&self) -> bool {
-        !self.tx.is_empty() && self.size > 1e-9
+        !self.tx.is_empty() && !self.condition_id.is_empty() && self.ts > 0
+            && self.size.is_finite() && self.size > 1e-9 && self.usdc.is_finite()
+            && (0.0..=1.0).contains(&(self.usdc / self.size))
+    }
+    pub fn token<'a>(&self, market_tokens: &'a [String]) -> Option<&'a str> {
+        let token = market_tokens.get(self.outcome_index as usize)?;
+        if token.is_empty() || (!self.asset.is_empty() && self.asset != *token) {
+            return None;
+        }
+        Some(token)
     }
 }
 pub fn cross_writer_key(lane: &str, token: &str) -> String {
@@ -61,6 +74,7 @@ mod tests {
     fn red(tx: &str, cond: &str, idx: u32, size: f64, usdc: f64, ts: i64) -> Redemption {
         Redemption {
             tx: tx.into(),
+            asset: String::new(),
             condition_id: cond.into(),
             outcome_index: idx,
             size,
@@ -114,11 +128,11 @@ mod tests {
         );
         assert_eq!(
             resolved_payout(PositionView { redeemable : true, cur_price : 1.4 }),
-            Some(1.0)
+            None
         );
         assert_eq!(
             resolved_payout(PositionView { redeemable : true, cur_price : - 0.2 }),
-            Some(0.0)
+            None
         );
     }
     #[test]
@@ -160,6 +174,7 @@ mod tests {
     fn the_idempotency_key_separates_two_conditions_in_one_tx() {
         let a = Redemption {
             tx: "0xtx".into(),
+            asset: String::new(),
             condition_id: "0xc1".into(),
             outcome_index: 0,
             size: 1.0,
@@ -168,6 +183,7 @@ mod tests {
         };
         let b = Redemption {
             tx: "0xtx".into(),
+            asset: String::new(),
             condition_id: "0xc2".into(),
             outcome_index: 0,
             size: 1.0,

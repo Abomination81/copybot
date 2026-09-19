@@ -10,7 +10,7 @@ Install Git, Python 3.11+, a C compiler/linker, and stable Rust using your opera
 git clone https://github.com/Abomination81/copybot.git
 cd copybot
 cargo build --locked --release --manifest-path hot/Cargo.toml --bin copybot-hot
-cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot
+cargo test --locked --manifest-path hot/Cargo.toml --lib --bin copybot-hot --tests
 ```
 
 This builds for the machine running the command. Build on the destination architecture or use your own cross-compilation setup. No prebuilt executable is supplied in this preview.
@@ -37,6 +37,7 @@ Edit the local files with a private editor or approved secret manager. They are 
 - `funder`: your custody/funding address. It is not always the signer address.
 - `signer`: the address corresponding to your signing key.
 - `signature_type`: the signature/custody mode actually supported by your account. Do not assume every wallet is a Safe merely because the example uses type 2.
+- For a Deposit Wallet using `signature_type = 3` (`POLY_1271`), set `funder` to the Deposit Wallet contract and keep the configured `signer` as the owner EOA corresponding to `PRIVATE_KEY`. The engine uses the funder for both maker and signer inside orders, including exits, and uses the EOA for API authentication and to produce the wrapped signature. Types 0/1/2 retain the EOA as order signer. This mapping follows Polymarket's V2 builder; offline tests do not establish live CLOB acceptance. The startup `/data/orders` self-check tests API authentication only, not order acceptance.
 - `PRIVATE_KEY`: your signer key, set locally. The engine derives its CLOB API credentials using the existing authentication path.
 - `feed.url`: your compatible pending-transaction WebSocket feed, including its private authentication if required.
 - `wallet`: the leader you intend to follow, with measured leader statistics and your own budget.
@@ -75,6 +76,12 @@ Open the private HTTPS dashboard. Check feed activity, the selected leader, mode
 Use the shared environment file with every service. `BOT_PORT` must match `DASHBOARD_PORT`; do not rely on their different code defaults. Start the watcher service and guardian, fillwatch, and buywatch timers from the supplied templates. Review their journals and confirm fresh observations. Enable `GUARDIAN_ENFORCE=1` when you intend its existing halt rules to operate; restart the observer processes to pick up changed environment values.
 
 Service templates preserve the existing intervals. They are not automatically installed, enabled, or started by a build. Validate their paths and environment on your host before enabling startup at boot.
+
+Settlement recovery runs inside the Rust engine every 60 seconds in live mode; it does not need a separate settlewatch service. If auto-redemption removes a position before the redeemable-position poll sees it, the engine uses redemption activity and a complete subsequent zero-balance snapshot to write a durable `settle` event. This closes tracked cost and books realized P&L together, with duplicate protection across polls and restarts. Pending orders, stale/incomplete snapshots, ambiguous token mappings, partial redemptions and shared token ownership defer automatic closure and emit `settle_deferred`. A missing token alone is never treated as proof of a winning payout. The history scan currently covers at most the newest 5,000 redemption rows per pass; older cases require separate investigation.
+
+`settlewatch.py` remains a legacy repair utility for previously released positions. Its default mode is read-only. Do not run it with `--apply` while the engine is running: it appends directly to the ledger, bypassing the engine's in-memory accounting and write serialization. Installing it as an automatic writer is not part of this deployment.
+
+The auto-redemption snapshot includes archived holdings. Direct closure requires an explicit matching `asset`, not just a default outcome index: [Polymarket's August 10 API change](https://docs.polymarket.com/changelog/predictions) documents per-outcome redemption amounts and the archived-position filter. Legacy aggregate activity and mixed histories containing both an open residual and a neutral reconciliation release require review; closing just the residual would strand the previously released cost basis.
 
 ## 7. Enable live execution deliberately
 
