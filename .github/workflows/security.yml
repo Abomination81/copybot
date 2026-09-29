@@ -1,0 +1,29 @@
+name: Rust dependency security
+on:
+  push:
+    paths:
+      - 'hot/Cargo.toml'
+      - 'hot/Cargo.lock'
+      - '.github/workflows/security.yml'
+  pull_request:
+    paths:
+      - 'hot/Cargo.toml'
+      - 'hot/Cargo.lock'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '17 8 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install pinned auditor
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Check locked dependencies against RustSec
+        run: cargo audit --file hot/Cargo.lock
