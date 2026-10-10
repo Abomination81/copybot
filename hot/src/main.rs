@@ -4454,16 +4454,27 @@ derived but are NOT accepted; every order would be refused. Refusing to continue
                 };
                 let Some(cr) = creds3.as_ref() else { continue };
                 let Some(key) = pk3.as_ref() else { continue };
-                let url = format!(
-                    "https://data-api.polymarket.com/positions?user={f3}\
-&sizeThreshold=0.0001&limit=500"
-                );
-                let Ok(resp) = http.get(&url).send().await else { continue };
-                if !resp.status().is_success() {
+                // Every page, or no sweep: a token missing from a partial list
+                // would read as not held (positions::Positions::may_act_destructively).
+                let ours_snap = copybot_hot::positions::fetch(
+                        &http,
+                        "https://data-api.polymarket.com",
+                        &f3,
+                        "0.0001",
+                        "",
+                        copybot_hot::ledger::now_secs(),
+                    )
+                    .await;
+                if !ours_snap.may_act_destructively() {
+                    e3.emit(
+                        serde_json::json!(
+                            { "t" : now_ms(), "ev" : "sweep_skip", "reason" :
+                            "own_positions_incomplete", "detail" : ours_snap.completeness.reason() }
+                        ),
+                    );
                     continue;
                 }
-                let Ok(v) = resp.json::<serde_json::Value>().await else { continue };
-                let Some(ours) = v.as_array() else { continue };
+                let ours = &ours_snap.rows;
                 for lane in r3.snapshot().iter() {
                     let name = lane.cfg.name.clone();
                     if !lane.state.armed.load(Ordering::Relaxed) {
@@ -4477,45 +4488,44 @@ derived but are NOT accepted; every order would be refused. Refusing to continue
                         continue;
                     }
                     let leader = format!("0x{}", hex::encode(lane.cfg.wallet20));
-                    let his_url = format!(
-                        "https://data-api.polymarket.com/positions?user={leader}\
-&sizeThreshold=0.0001&limit=500"
-                    );
-                    let his = match http.get(&his_url).send().await {
-                        Ok(resp) if resp.status().is_success() => {
-                            match resp.json::<serde_json::Value>().await {
-                                Ok(rows) => {
-                                    rows.as_array()
-                                        .map(|a| {
-                                            a
-                                                .iter()
-                                                .filter_map(|p| {
-                                                    let token = p["asset"].as_str()?.to_string();
-                                                    let size = p["size"]
-                                                        .as_f64()
-                                                        .or_else(|| p["size"].as_str().and_then(|x| x.parse().ok()))
-                                                        .unwrap_or(0.0);
-                                                    let avg = p["avgPrice"]
-                                                        .as_f64()
-                                                        .or_else(|| {
-                                                            p["avgPrice"].as_str().and_then(|x| x.parse().ok())
-                                                        })
-                                                        .unwrap_or(0.0);
-                                                    Some((token, (size, avg)))
-                                                })
-                                                .collect::<std::collections::HashMap<_, _>>()
-                                        })
-                                }
-                                Err(_) => None,
-                            }
-                        }
-                        _ => None,
-                    };
+                    // The leader's whole book, every page: with only the first page, a
+                    // leader holding more than 500 positions reads as flat in the rest,
+                    // and the sweep sold fresh copies as `leader_flat`.
+                    let his_snap = copybot_hot::positions::fetch(
+                            &http,
+                            "https://data-api.polymarket.com",
+                            &leader,
+                            "0.0001",
+                            "",
+                            copybot_hot::ledger::now_secs(),
+                        )
+                        .await;
+                    let his = his_snap
+                        .may_act_destructively()
+                        .then(|| {
+                            his_snap
+                                .rows
+                                .iter()
+                                .filter_map(|p| {
+                                    let token = p["asset"].as_str()?.to_string();
+                                    let size = p["size"]
+                                        .as_f64()
+                                        .or_else(|| p["size"].as_str().and_then(|x| x.parse().ok()))
+                                        .unwrap_or(0.0);
+                                    let avg = p["avgPrice"]
+                                        .as_f64()
+                                        .or_else(|| p["avgPrice"].as_str().and_then(|x| x.parse().ok()))
+                                        .unwrap_or(0.0);
+                                    Some((token, (size, avg)))
+                                })
+                                .collect::<std::collections::HashMap<_, _>>()
+                        });
                     let Some(his) = his else {
                         e3.emit(
                             serde_json::json!(
                                 { "t" : now_ms(), "ev" : "sweep_skip", "lane" : name,
-                                "reason" : "leader_positions_unavailable" }
+                                "reason" : "leader_positions_unavailable", "detail" :
+                                his_snap.completeness.reason() }
                             ),
                         );
                         continue;
@@ -4922,16 +4932,29 @@ SOLD — the wallet still holds everything it held before.",
                 let (Some(cr), Some(key)) = (creds4.as_ref(), pk4.as_ref()) else {
                     continue
                 };
-                let url = format!(
-                    "https://data-api.polymarket.com/positions?user={f4}\
-&sizeThreshold=0.0001&limit=500"
-                );
-                let ours: Vec<serde_json::Value> = match http.get(&url).send().await {
-                    Ok(r) if r.status().is_success() => {
-                        r.json().await.unwrap_or_default()
-                    }
-                    _ => Vec::new(),
-                };
+                // Every page, or no flatten: a position missing from a partial or
+                // failed read would be sold at the 2-cent floor with no neg-risk flag.
+                let ours_snap = copybot_hot::positions::fetch(
+                        &http,
+                        "https://data-api.polymarket.com",
+                        &f4,
+                        "0.0001",
+                        "",
+                        copybot_hot::ledger::now_secs(),
+                    )
+                    .await;
+                if !ours_snap.may_act_destructively() {
+                    e4.emit(
+                        serde_json::json!(
+                            { "t" : now_ms(), "ev" : "flatten_refused", "lane" : lane.cfg
+                            .name, "mode" : mode.as_str(), "reason" :
+                            "own_positions_incomplete", "detail" : ours_snap.completeness
+                            .reason() }
+                        ),
+                    );
+                    continue;
+                }
+                let ours = ours_snap.rows;
                 let mark_of = |tok: &str| -> f64 {
                     ours.iter()
                         .find(|p| p["asset"].as_str() == Some(tok))
@@ -6706,16 +6729,27 @@ this as a bad read, not a mass cancellation",
             let mut tick = tokio::time::interval(Duration::from_secs(60));
             loop {
                 tick.tick().await;
-                let url = format!(
-                    "https://data-api.polymarket.com/positions?user={fund}\
-&sizeThreshold=0.0001&limit=500&redeemable=true"
-                );
-                let rows: Vec<serde_json::Value> = match http.get(&url).send().await {
-                    Ok(r) if r.status().is_success() => {
-                        r.json().await.unwrap_or_default()
-                    }
-                    _ => continue,
-                };
+                // Every page: settled losers are never cleared, so past the first
+                // page they would never be booked and would stay open in the ledger.
+                // A partial list is still safe to book from; the rest waits a pass.
+                let snap = copybot_hot::positions::fetch(
+                        &http,
+                        "https://data-api.polymarket.com",
+                        &fund,
+                        "0.0001",
+                        "&redeemable=true",
+                        copybot_hot::ledger::now_secs(),
+                    )
+                    .await;
+                if !snap.completeness.is_complete() {
+                    em.emit(
+                        serde_json::json!(
+                            { "t" : now_ms(), "ev" : "settle_scan_incomplete", "detail" :
+                            snap.completeness.reason() }
+                        ),
+                    );
+                }
+                let rows = snap.rows;
                 let mut payout: std::collections::HashMap<String, f64> = Default::default();
                 for p in &rows {
                     let view = copybot_hot::settlement::PositionView {
@@ -8493,6 +8527,24 @@ not release {unfilled} unfilled shares: {e:?} — this order stays under-copied"
                 }
             }
         }
+    }
+}
+#[cfg(test)]
+mod positions_paging_tests {
+    /// Position books must be read with `positions::fetch`, every page. The sweep once read
+    /// a single `limit=500` page, so a leader holding more than 500 positions read as flat
+    /// in the rest and fresh copies were sold as `leader_flat`.
+    #[test]
+    fn no_position_book_is_read_as_a_single_page() {
+        let needle = ["positions?user=", "{"].concat();
+        for (file, src) in [("main.rs", include_str!("main.rs")), ("matchup.rs", include_str!("matchup.rs"))] {
+            assert!(!src.contains(&needle), "{file}: read positions with positions::fetch");
+        }
+        let src = include_str!("main.rs");
+        let start = src.find("let delay = if first_backstop").expect("sweep loop");
+        let sweep = src.find("copybot_hot::sweep::decide").expect("sweep call site");
+        let fetches = src[start..sweep].matches("copybot_hot::positions::fetch(").count();
+        assert_eq!(fetches, 2, "the sweep reads both books through the paging fetch");
     }
 }
 #[cfg(test)]

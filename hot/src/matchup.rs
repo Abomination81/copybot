@@ -168,27 +168,22 @@ impl Matchup {
         him: &str,
         lane_epoch: Option<i64>,
     ) -> serde_json::Value {
-        let our_pos = get_json(
-                http,
-                &format!("{DATA_API}/positions?user={us}&sizeThreshold=0.01&limit=500"),
-            )
-            .await;
-        let his_pos = get_json(
-                http,
-                &format!("{DATA_API}/positions?user={him}&sizeThreshold=0.01&limit=500"),
-            )
-            .await;
-        let (our_pos, his_pos) = match (our_pos, his_pos) {
-            (Ok(a), Ok(b)) => (a, b),
-            (a, b) => {
-                return serde_json::json!(
-                    { "error" : format!("data-api: {:?} {:?}", a.err(), b.err()) }
-                );
-            }
-        };
-        let empty = vec![];
-        let ours: &Vec<_> = our_pos.as_array().unwrap_or(&empty);
-        let his: &Vec<_> = his_pos.as_array().unwrap_or(&empty);
+        // Both books, every page: past the first 500 rows (largest first) a held
+        // position would be missing from the view and read as never copied.
+        let now = crate::ledger::now_secs();
+        let (our_pos, his_pos) = tokio::join!(
+            crate::positions::fetch(http, DATA_API, us, "0.01", "", now),
+            crate::positions::fetch(http, DATA_API, him, "0.01", "", now)
+        );
+        if !our_pos.completeness.is_complete() || !his_pos.completeness.is_complete() {
+            return serde_json::json!(
+                { "error" : format!("positions incomplete (ours: {}; his: {}) — showing \
+                 nothing rather than a partial matchup.", our_pos.completeness.reason(),
+                his_pos.completeness.reason()) }
+            );
+        }
+        let ours: &Vec<_> = &our_pos.rows;
+        let his: &Vec<_> = &his_pos.rows;
         if let Some((at, h)) = self.hist.lock().unwrap().as_ref() {
             if at.elapsed() < HISTORY_FOR {
                 return self.assemble(ours, his, h.clone());
